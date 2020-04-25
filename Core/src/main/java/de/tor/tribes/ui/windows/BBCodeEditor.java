@@ -16,29 +16,27 @@
 package de.tor.tribes.ui.windows;
 
 import de.tor.tribes.io.DataHolder;
-import de.tor.tribes.io.UnitHolder;
-import de.tor.tribes.types.drawing.AbstractForm;
+import de.tor.tribes.io.TroopAmountFixed;
 import de.tor.tribes.types.AllyStatResult;
 import de.tor.tribes.types.Attack;
-import de.tor.tribes.types.ext.Barbarians;
-import de.tor.tribes.types.test.DummyUnit;
 import de.tor.tribes.types.FightReport;
 import de.tor.tribes.types.Marker;
-import de.tor.tribes.types.ext.NoAlly;
 import de.tor.tribes.types.Note;
 import de.tor.tribes.types.OverallStatResult;
-import de.tor.tribes.types.drawing.Rectangle;
 import de.tor.tribes.types.SOSRequest;
 import de.tor.tribes.types.SingleAttackerStat;
 import de.tor.tribes.types.Tag;
 import de.tor.tribes.types.TribeStatResult;
 import de.tor.tribes.types.TribeStatsElement;
 import de.tor.tribes.types.TribeStatsElement.Stats;
+import de.tor.tribes.types.drawing.AbstractForm;
+import de.tor.tribes.types.drawing.Rectangle;
+import de.tor.tribes.types.ext.Barbarians;
+import de.tor.tribes.types.ext.NoAlly;
 import de.tor.tribes.types.ext.Village;
-import de.tor.tribes.types.test.DummyVillage;
 import de.tor.tribes.ui.ImageManager;
-import de.tor.tribes.util.interfaces.BBChangeListener;
 import de.tor.tribes.util.BBCodeFormatter;
+import de.tor.tribes.util.BuildingSettings;
 import de.tor.tribes.util.Constants;
 import de.tor.tribes.util.GlobalOptions;
 import de.tor.tribes.util.bb.AllyReportStatsFormatter;
@@ -58,11 +56,11 @@ import de.tor.tribes.util.bb.TribeReportStatsFormatter;
 import de.tor.tribes.util.bb.TroopListFormatter;
 import de.tor.tribes.util.bb.VillageListFormatter;
 import de.tor.tribes.util.bb.WinnerLoserStatsFormatter;
+import de.tor.tribes.util.interfaces.BBChangeListener;
 import de.tor.tribes.util.troops.VillageTroopsHolder;
 import java.awt.Color;
 import java.awt.event.ItemEvent;
 import java.util.Date;
-import java.util.Hashtable;
 import java.util.LinkedList;
 import java.util.List;
 import javax.swing.DefaultListModel;
@@ -163,19 +161,19 @@ public class BBCodeEditor extends javax.swing.JDialog {
         Village sampleVillage4 = DataHolder.getSingleton().getRandomVillageWithOwner();
         Village sampleVillage5 = DataHolder.getSingleton().getRandomVillageWithOwner();
         if (sampleVillage1 == null) {
-            sampleVillage1 = new DummyVillage((short) 500, (short) 500);
+            sampleVillage1 = new Village((int) (Math.random() * 1000), (int) (Math.random() * 1000));
         }
         if (sampleVillage2 == null) {
-            sampleVillage2 = new DummyVillage((short) 500, (short) 500);
+            sampleVillage2 = new Village((int) (Math.random() * 1000), (int) (Math.random() * 1000));
         }
         if (sampleVillage3 == null) {
-            sampleVillage3 = new DummyVillage((short) 500, (short) 500);
+            sampleVillage3 = new Village((int) (Math.random() * 1000), (int) (Math.random() * 1000));
         }
         if (sampleVillage4 == null) {
-            sampleVillage4 = new DummyVillage((short) 500, (short) 500);
+            sampleVillage4 = new Village((int) (Math.random() * 1000), (int) (Math.random() * 1000));
         }
         if (sampleVillage5 == null) {
-            sampleVillage5 = new DummyVillage((short) 500, (short) 500);
+            sampleVillage5 = new Village((int) (Math.random() * 1000), (int) (Math.random() * 1000));
         }
         sampleVillages.add(sampleVillage2);
         sampleVillages.add(sampleVillage3);
@@ -185,14 +183,16 @@ public class BBCodeEditor extends javax.swing.JDialog {
         sampleAttack.setSource(sampleVillage2);
         sampleAttack.setTarget(sampleVillage3);
         sampleAttack.setArriveTime(new Date());
-        sampleAttack.setType(Attack.CLEAN_TYPE);
-        sampleAttack.setUnit(new DummyUnit());
+        sampleAttack.setType(Attack.CLEAN_TYPE);        
+        sampleAttack.setUnit(DataHolder.getSingleton().getRandomUnit());
+        sampleAttack.setTroopsByType();
         Attack sampleAttack2 = new Attack();
         sampleAttack2.setSource(sampleVillage2);
         sampleAttack2.setTarget(sampleVillage3);
         sampleAttack2.setArriveTime(new Date());
         sampleAttack2.setType(Attack.CLEAN_TYPE);
-        sampleAttack2.setUnit(new DummyUnit());
+        sampleAttack2.setUnit(DataHolder.getSingleton().getRandomUnit());
+        sampleAttack2.setTroopsByType();
         sampleAttacks.add(sampleAttack);
         sampleAttacks.add(sampleAttack2);
         //sample note
@@ -228,7 +228,7 @@ public class BBCodeEditor extends javax.swing.JDialog {
         //sampleRequests.add(sampleSOSRequest2);
         //sample report
         FightReport sampleReport = new FightReport();
-        sampleReport.setAimedBuilding("Wall");
+        sampleReport.setAimedBuildingId(BuildingSettings.getBuildingIdByName("wall"));
         sampleReport.setAttacker(sampleVillage2.getTribe());
         sampleReport.setConquered(false);
         sampleReport.setDefender(sampleVillage3.getTribe());
@@ -241,7 +241,7 @@ public class BBCodeEditor extends javax.swing.JDialog {
         FightReport sampleReport2 = new FightReport();
         sampleReport2.setAcceptanceAfter((byte) 70);
         sampleReport2.setAcceptanceBefore((byte) 100);
-        sampleReport2.setAimedBuilding("Wall");
+        sampleReport2.setAimedBuildingId(BuildingSettings.getBuildingIdByName("wall"));
         sampleReport2.setAttacker(sampleVillage2.getTribe());
         sampleReport2.setConquered(false);
         sampleReport2.setDefender(sampleVillage3.getTribe());
@@ -271,17 +271,17 @@ public class BBCodeEditor extends javax.swing.JDialog {
         t3.tagVillage(sampleVillage5.getId());
         //sample troops
         VillageTroopsHolder h = new VillageTroopsHolder(sampleVillage1, new Date());
-        Hashtable<UnitHolder, Integer> troops = new Hashtable<>();
-        troops.put(DataHolder.getSingleton().getUnitByPlainName("axe"), 6600);
-        troops.put(DataHolder.getSingleton().getUnitByPlainName("light"), 2200);
-        troops.put(DataHolder.getSingleton().getUnitByPlainName("ram"), 300);
-        troops.put(DataHolder.getSingleton().getUnitByPlainName("snob"), 2);
+        TroopAmountFixed troops = new TroopAmountFixed(0);
+        troops.setAmountForUnit(DataHolder.getSingleton().getUnitByPlainName("axe"), 6600);
+        troops.setAmountForUnit(DataHolder.getSingleton().getUnitByPlainName("light"), 2200);
+        troops.setAmountForUnit(DataHolder.getSingleton().getUnitByPlainName("ram"), 300);
+        troops.setAmountForUnit(DataHolder.getSingleton().getUnitByPlainName("snob"), 2);
         h.setTroops(troops);
         VillageTroopsHolder h2 = new VillageTroopsHolder(sampleVillage3, new Date());
-        troops.put(DataHolder.getSingleton().getUnitByPlainName("axe"), 5500);
-        troops.put(DataHolder.getSingleton().getUnitByPlainName("light"), 2000);
-        troops.put(DataHolder.getSingleton().getUnitByPlainName("marcher"), 300);
-        troops.put(DataHolder.getSingleton().getUnitByPlainName("ram"), 240);
+        troops.setAmountForUnit(DataHolder.getSingleton().getUnitByPlainName("axe"), 5500);
+        troops.setAmountForUnit(DataHolder.getSingleton().getUnitByPlainName("light"), 2000);
+        troops.setAmountForUnit(DataHolder.getSingleton().getUnitByPlainName("marcher"), 300);
+        troops.setAmountForUnit(DataHolder.getSingleton().getUnitByPlainName("ram"), 240);
         h2.setTroops(troops);
         sampleTroops.add(h);
         sampleTroops.add(h2);
@@ -347,11 +347,11 @@ public class BBCodeEditor extends javax.swing.JDialog {
         sampleAllyResult.add(allyStat2);
         sampleOverallResult.add(overallResult);
         Marker m1 = new Marker();
-        m1.setMarkerType(Marker.TRIBE_MARKER_TYPE);
+        m1.setMarkerType(Marker.MarkerType.TRIBE);
         m1.setMarkerID(sampleVillage1.getTribeID());
         m1.setMarkerColor(Constants.ENEMY_MARKER);
         Marker m2 = new Marker();
-        m2.setMarkerType(Marker.TRIBE_MARKER_TYPE);
+        m2.setMarkerType(Marker.MarkerType.TRIBE);
         m2.setMarkerID(sampleVillage2.getTribeID());
         m2.setMarkerColor(Constants.NAP_MARKER);
         sampleMarker.add(m1);

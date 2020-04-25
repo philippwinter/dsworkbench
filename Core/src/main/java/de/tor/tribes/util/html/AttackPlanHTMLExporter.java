@@ -16,13 +16,13 @@
 package de.tor.tribes.util.html;
 
 import de.tor.tribes.io.DataHolder;
-import de.tor.tribes.util.*;
 import de.tor.tribes.io.ServerManager;
 import de.tor.tribes.io.UnitHolder;
-import de.tor.tribes.types.ext.Ally;
 import de.tor.tribes.types.Attack;
 import de.tor.tribes.types.StandardAttack;
+import de.tor.tribes.types.ext.Ally;
 import de.tor.tribes.types.ext.Tribe;
+import de.tor.tribes.util.*;
 import de.tor.tribes.util.attack.StandardAttackManager;
 import java.io.BufferedReader;
 import java.io.File;
@@ -34,14 +34,16 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.regex.Matcher;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * @author Charon
  */
 public class AttackPlanHTMLExporter {
 
-    private static Logger logger = Logger.getLogger("AttackHTMLExporter");
+    private static Logger logger = LogManager.getLogger("AttackHTMLExporter");
     private static String HEADER = "";
     private static String FOOTER = "";
     private static String BLOCK = "";
@@ -108,7 +110,9 @@ public class AttackPlanHTMLExporter {
 
             BufferedReader r = null;
             if (!fHeader.exists()) {
-                r = new BufferedReader(new InputStreamReader(AttackPlanHTMLExporter.class.getResourceAsStream("/de/tor/tribes/tmpl/attack_header.tmpl")));
+                r = new BufferedReader(new InputStreamReader(
+                        new FileInputStream(new File(
+                                GlobalDefaults.getProperty("attack.template.header.internal")))));
             } else {
                 r = new BufferedReader(new InputStreamReader(new FileInputStream(header)));
             }
@@ -120,7 +124,9 @@ public class AttackPlanHTMLExporter {
             r.close();
 
             if (!fBlock.exists()) {
-                r = new BufferedReader(new InputStreamReader(AttackPlanHTMLExporter.class.getResourceAsStream("/de/tor/tribes/tmpl/attack_block.tmpl")));
+                r = new BufferedReader(new InputStreamReader(
+                        new FileInputStream(new File(
+                                GlobalDefaults.getProperty("attack.template.block.internal")))));
             } else {
                 r = new BufferedReader(new InputStreamReader(new FileInputStream(block)));
             }
@@ -131,7 +137,9 @@ public class AttackPlanHTMLExporter {
             r.close();
 
             if (!fFooter.exists()) {
-                r = new BufferedReader(new InputStreamReader(AttackPlanHTMLExporter.class.getResourceAsStream("/de/tor/tribes/tmpl/attack_footer.tmpl")));
+                r = new BufferedReader(new InputStreamReader(
+                        new FileInputStream(new File(
+                                GlobalDefaults.getProperty("attack.template.footer.internal")))));
             } else {
                 r = new BufferedReader(new InputStreamReader(new FileInputStream(footer)));
             }
@@ -335,11 +343,9 @@ public class AttackPlanHTMLExporter {
 
             // <editor-fold defaultstate="collapsed" desc="Replace times and place URL">
             //replace arrive time
-            String arrive = f.format(a.getArriveTime());
-            b = b.replaceAll(ARRIVE_TIME, arrive);
+            b = b.replaceAll(ARRIVE_TIME, f.format(a.getArriveTime()));
             //replace send time
-            long send = a.getArriveTime().getTime() - ((long) DSCalculator.calculateMoveTimeInSeconds(a.getSource(), a.getTarget(), a.getUnit().getSpeed()) * 1000);
-            b = b.replaceAll(SEND_TIME, f.format(new Date(send)));
+            b = b.replaceAll(SEND_TIME, f.format(a.getSendTime()));
             //replace place link
             String placeURL = baseURL + "game.php?village=";
             int uvID = GlobalOptions.getSelectedProfile().getUVId();
@@ -354,7 +360,7 @@ public class AttackPlanHTMLExporter {
             for (UnitHolder u : DataHolder.getSingleton().getUnits()) {
                 int amount = 0;
                 if (stdAttack != null) {
-                    amount = stdAttack.getAmountForUnit(u, a.getSource());
+                    amount = stdAttack.getTroops().getAmountForUnit(u, a.getSource());
                 }
                 placeURL += "&" + u.getPlainName() + "=" + amount;
             }

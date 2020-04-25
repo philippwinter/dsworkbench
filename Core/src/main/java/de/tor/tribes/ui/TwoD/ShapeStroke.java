@@ -31,14 +31,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
  */
 import java.awt.*;
-
 import java.awt.geom.*;
 
 public class ShapeStroke implements Stroke {
 
     private Shape shapes[];
     private float advance;
-    private boolean stretchToFit = false;
     private boolean repeat = true;
     private AffineTransform t = new AffineTransform();
     private static final float FLATNESS = 1;
@@ -58,6 +56,7 @@ public class ShapeStroke implements Stroke {
         }
     }
 
+    @Override
     public Shape createStrokedShape(Shape shape) {
         GeneralPath result = new GeneralPath();
         PathIterator it = new FlatteningPathIterator(shape.getPathIterator(null), FLATNESS);

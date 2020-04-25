@@ -16,21 +16,15 @@
 package de.tor.tribes.types;
 
 import de.tor.tribes.control.ManageableType;
-import de.tor.tribes.io.DataHolder;
-import de.tor.tribes.io.UnitHolder;
-import de.tor.tribes.types.ext.Village;
+import de.tor.tribes.io.TroopAmountDynamic;
+import de.tor.tribes.io.TroopAmountFixed;
 import de.tor.tribes.ui.ImageManager;
-import de.tor.tribes.util.xml.JaxenUtils;
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
-import java.util.ArrayList;
-import java.util.Hashtable;
-import java.util.List;
-import java.util.Map.Entry;
-import java.util.Set;
-import org.apache.log4j.Logger;
-import org.jdom.Element;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jdom2.Element;
 
 /**
  *
@@ -38,9 +32,9 @@ import org.jdom.Element;
  */
 public class StandardAttack extends ManageableType {
 
-    private static Logger logger = Logger.getLogger("StandardAttack");
+    private static Logger logger = LogManager.getLogger("StandardAttack");
     private String name = null;
-    private List<StandardAttackElement> elements = null;
+    private TroopAmountDynamic troops = null;
     public static final int NO_ICON = ImageManager.NOTE_SYMBOL_NONE;
     public static final int OFF_ICON = ImageManager.NOTE_SYMBOL_AXE;
     public static final int FAKE_ICON = ImageManager.NOTE_SYMBOL_FAKE;
@@ -56,10 +50,7 @@ public class StandardAttack extends ManageableType {
     public StandardAttack(String pName, int pIcon) {
         name = pName;
         icon = pIcon;
-        elements = new ArrayList<>();
-        for (UnitHolder unit : DataHolder.getSingleton().getUnits()) {
-            elements.add(new StandardAttackElement(unit, 0));
-        }
+        troops = new TroopAmountDynamic(0);
     }
 
     public StandardAttack(String pName) {
@@ -67,58 +58,40 @@ public class StandardAttack extends ManageableType {
     }
 
     @Override
-    public String getElementIdentifier() {
-        return "stdAttack";
+    public int hashCode() {
+        int hash = 3;
+        hash = 97 * hash + this.name.hashCode();
+        hash = 97 * hash + this.troops.hashCode();
+        hash = 97 * hash + this.icon;
+        return hash;
     }
 
     @Override
-    public String getElementGroupIdentifier() {
-        return "stdAttacks";
-    }
-
-    @Override
-    public String getGroupNameAttributeIdentifier() {
-        return "";
-    }
-
-    public boolean equals(Hashtable<UnitHolder, Integer> pUnits) {
-        if (containsDynamicAmount()) {
-            return false;
+    public boolean equals(Object pOther) {
+        if(pOther instanceof TroopAmountDynamic) {
+            return troops.equals(pOther);
         }
-
-        Set<Entry<UnitHolder, Integer>> entries = pUnits.entrySet();
-        for (Entry<UnitHolder, Integer> entry : entries) {
-            if (getFixedAmountForUnit(entry.getKey()) != entry.getValue()) {
-                return false;
-            }
+        if(pOther instanceof  TroopAmountFixed) {
+            if(!troops.isFixed()) return false;
+            return troops.transformToFixed(null).equals(pOther);
         }
-        return true;
-    }
-
-    public boolean containsDynamicAmount() {
-        for (UnitHolder unit : DataHolder.getSingleton().getUnits()) {
-            if (!getElementForUnit(unit).isFixed()) {
-                return true;
-            }
+        if(pOther instanceof StandardAttack) {
+            //only icon needs to be same
+            return ((StandardAttack) pOther).getIcon() == this.getIcon();
         }
         return false;
     }
 
     @Override
-    public String toXml() {
-        StringBuilder b = new StringBuilder();
+    public Element toXml(String elementName) {
+        Element stdAtt = new Element(elementName);
         try {
-            b.append("<").append(getElementIdentifier()).append(" name=\"").append(URLEncoder.encode(name, "UTF-8")).append("\" icon=\"").append(icon).append("\">\n");
-            b.append("<attackElements>\n");
-            for (StandardAttackElement elem : elements) {
-                b.append(elem.toXml());
-            }
-            b.append("</attackElements>\n");
-            b.append("</").append(getElementIdentifier()).append(">\n");
-        } catch (IOException ioe) {
-            return "\n";
+            stdAtt.setAttribute("name", URLEncoder.encode(name, "UTF-8"));
+            stdAtt.setAttribute("icon", Integer.toString(icon));
+            stdAtt.addContent(troops.toXml("attackElements"));
+        } catch (IOException ignored) {
         }
-        return b.toString();
+        return stdAtt;
     }
 
     @Override
@@ -135,15 +108,7 @@ public class StandardAttack extends ManageableType {
             icon = -1;
         }
 
-        elements.clear();
-        for (Element aElem : (List<Element>) JaxenUtils.getNodes(e, "attackElements/attackElement")) {
-            try {
-                StandardAttackElement elem = StandardAttackElement.fromXml(aElem);
-                elements.add(elem);
-            } catch (Exception ex) {
-                //ignore
-            }
-        }
+        troops = new TroopAmountDynamic(e.getChild("attackElements"));
     }
 
     public final void setName(String pName) {
@@ -167,22 +132,7 @@ public class StandardAttack extends ManageableType {
         return icon;
     }
 
-    public StandardAttackElement getElementForUnit(UnitHolder pUnit) {
-        for (StandardAttackElement elem : elements) {
-            if (elem.affectsUnit(pUnit)) {
-                return elem;
-            }
-        }
-        return null;
-    }
-
-    public int getAmountForUnit(UnitHolder pUnit, Village pVillage) {
-        StandardAttackElement element = getElementForUnit(pUnit);
-        return (element == null) ? 0 : element.getTroopsAmount(pVillage);
-    }
-
-    public int getFixedAmountForUnit(UnitHolder pUnit) {
-        StandardAttackElement element = getElementForUnit(pUnit);
-        return (element == null) ? 0 : getElementForUnit(pUnit).getTroopsAmount();
+    public TroopAmountDynamic getTroops() {
+        return troops;
     }
 }

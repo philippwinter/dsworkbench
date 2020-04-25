@@ -21,10 +21,11 @@ import de.tor.tribes.ui.models.SupportTableModel;
 import de.tor.tribes.ui.renderer.NumberFormatCellRenderer;
 import de.tor.tribes.ui.renderer.SupportDirectionRenderer;
 import de.tor.tribes.ui.renderer.SupportTableHeaderRenderer;
-import de.tor.tribes.util.BrowserCommandSender;
+import de.tor.tribes.util.BrowserInterface;
 import de.tor.tribes.util.Constants;
 import java.util.List;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jdesktop.swingx.decorator.HighlighterFactory;
 
 /**
@@ -33,7 +34,7 @@ import org.jdesktop.swingx.decorator.HighlighterFactory;
  */
 public class SupportDetailsDialog extends javax.swing.JDialog {
 
-    private static Logger logger = Logger.getLogger("SupportDetailsDialog");
+    private static Logger logger = LogManager.getLogger("SupportDetailsDialog");
 
     /**
      * Creates new form SupportDetailsDialog
@@ -157,7 +158,7 @@ public class SupportDetailsDialog extends javax.swing.JDialog {
             logger.error("Failed to center village in game", e);
             return;
         }
-        BrowserCommandSender.centerVillage(v);
+        BrowserInterface.centerVillage(v);
     }//GEN-LAST:event_fireCenterInGameEvent
 
     private void fireCenterOnMapEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireCenterOnMapEvent
@@ -182,10 +183,12 @@ public class SupportDetailsDialog extends javax.swing.JDialog {
     public static void main(String args[]) {
         java.awt.EventQueue.invokeLater(new Runnable() {
 
+            @Override
             public void run() {
                 SupportDetailsDialog dialog = new SupportDetailsDialog(new javax.swing.JFrame(), true);
                 dialog.addWindowListener(new java.awt.event.WindowAdapter() {
 
+                    @Override
                     public void windowClosing(java.awt.event.WindowEvent e) {
                         System.exit(0);
                     }

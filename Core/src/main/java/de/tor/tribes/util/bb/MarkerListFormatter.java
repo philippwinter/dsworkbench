@@ -16,7 +16,6 @@
 package de.tor.tribes.util.bb;
 
 import de.tor.tribes.types.Marker;
-
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -27,7 +26,7 @@ import java.util.List;
 public class MarkerListFormatter extends BasicFormatter<Marker> {
 
     private static final String[] VARIABLES = new String[] {LIST_START, LIST_END, ELEMENT_COUNT, ELEMENT_ID};
-    private static final String STANDARD_TEMPLATE = "Anzahl der Markierungen: %ELEMENT_COUNT%\n\n"
+    public static final String STANDARD_TEMPLATE = "Anzahl der Markierungen: %ELEMENT_COUNT%\n\n"
             + "%LIST_START% %NAME% [color=%MARKER_COLOR%]▓▓▓[/color] %LIST_END%\n";
     private static final String TEMPLATE_PROPERTY = "marker.list.bbexport.template";
 

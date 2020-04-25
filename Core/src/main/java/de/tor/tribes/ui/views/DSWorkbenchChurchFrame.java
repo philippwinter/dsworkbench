@@ -18,8 +18,6 @@ package de.tor.tribes.ui.views;
 import de.tor.tribes.control.GenericManagerListener;
 import de.tor.tribes.types.ext.Tribe;
 import de.tor.tribes.types.ext.Village;
-import de.tor.tribes.types.test.DummyVillage;
-import de.tor.tribes.ui.editors.ChurchLevelCellEditor;
 import de.tor.tribes.ui.models.ChurchTableModel;
 import de.tor.tribes.ui.panels.GenericTestPanel;
 import de.tor.tribes.ui.renderer.ColorCellRenderer;
@@ -27,25 +25,9 @@ import de.tor.tribes.ui.renderer.DefaultTableHeaderRenderer;
 import de.tor.tribes.ui.windows.AbstractDSWorkbenchFrame;
 import de.tor.tribes.ui.windows.DSWorkbenchMainFrame;
 import de.tor.tribes.util.*;
-import de.tor.tribes.util.church.ChurchManager;
 import de.tor.tribes.util.mark.MarkerManager;
-import org.apache.commons.configuration.Configuration;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.Logger;
-import org.jdesktop.swingx.JXButton;
-import org.jdesktop.swingx.JXTaskPane;
-import org.jdesktop.swingx.decorator.CompoundHighlighter;
-import org.jdesktop.swingx.decorator.HighlightPredicate;
-import org.jdesktop.swingx.decorator.HighlighterFactory;
-import org.jdesktop.swingx.decorator.PainterHighlighter;
-import org.jdesktop.swingx.painter.AbstractLayoutPainter.HorizontalAlignment;
-import org.jdesktop.swingx.painter.AbstractLayoutPainter.VerticalAlignment;
-import org.jdesktop.swingx.painter.ImagePainter;
-import org.jdesktop.swingx.painter.MattePainter;
-
-import javax.swing.*;
-import javax.swing.event.ListSelectionEvent;
-import javax.swing.event.ListSelectionListener;
+import de.tor.tribes.util.village.KnownVillage;
+import de.tor.tribes.util.village.KnownVillageManager;
 import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.*;
@@ -56,6 +38,22 @@ import java.util.Calendar;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.StringTokenizer;
+import javax.swing.*;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
+import org.apache.commons.configuration2.Configuration;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jdesktop.swingx.JXButton;
+import org.jdesktop.swingx.JXTaskPane;
+import org.jdesktop.swingx.decorator.CompoundHighlighter;
+import org.jdesktop.swingx.decorator.HighlightPredicate;
+import org.jdesktop.swingx.decorator.HighlighterFactory;
+import org.jdesktop.swingx.decorator.PainterHighlighter;
+import org.jdesktop.swingx.painter.AbstractLayoutPainter.HorizontalAlignment;
+import org.jdesktop.swingx.painter.AbstractLayoutPainter.VerticalAlignment;
+import org.jdesktop.swingx.painter.ImagePainter;
+import org.jdesktop.swingx.painter.MattePainter;
 
 /**
  * @author Charon
@@ -71,7 +69,7 @@ public class DSWorkbenchChurchFrame extends AbstractDSWorkbenchFrame implements 
     public void dataChangedEvent(String pGroup) {
         ((ChurchTableModel) jChurchTable.getModel()).fireTableDataChanged();
     }
-    private static Logger logger = Logger.getLogger("ChurchView");
+    private final static Logger logger = LogManager.getLogger("ChurchView");
     private static DSWorkbenchChurchFrame SINGLETON = null;
     private GenericTestPanel centerPanel = null;
 
@@ -109,12 +107,8 @@ public class DSWorkbenchChurchFrame extends AbstractDSWorkbenchFrame implements 
         jChurchTable.registerKeyboardAction(listener, "Delete", delete, JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
         jChurchTable.registerKeyboardAction(listener, "BBCopy", bbCopy, JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
 
-        try {
-            jChurchFrameAlwaysOnTop.setSelected(Boolean.parseBoolean(GlobalOptions.getProperty("church.frame.alwaysOnTop")));
-            setAlwaysOnTop(jChurchFrameAlwaysOnTop.isSelected());
-        } catch (Exception e) {
-            //setting not available
-        }
+        jChurchFrameAlwaysOnTop.setSelected(GlobalOptions.getProperties().getBoolean("church.frame.alwaysOnTop"));
+        setAlwaysOnTop(jChurchFrameAlwaysOnTop.isSelected());
 
         jChurchTable.setModel(new ChurchTableModel());
         // <editor-fold defaultstate="collapsed" desc=" Init HelpSystem ">
@@ -133,6 +127,7 @@ public class DSWorkbenchChurchFrame extends AbstractDSWorkbenchFrame implements 
         super.toBack();
     }
 
+    @Override
     public void storeCustomProperties(Configuration pConfig) {
         pConfig.setProperty(getPropertyPrefix() + ".menu.visible", centerPanel.isMenuVisible());
         pConfig.setProperty(getPropertyPrefix() + ".alwaysOnTop", jChurchFrameAlwaysOnTop.isSelected());
@@ -141,6 +136,7 @@ public class DSWorkbenchChurchFrame extends AbstractDSWorkbenchFrame implements 
 
     }
 
+    @Override
     public void restoreCustomProperties(Configuration pConfig) {
         centerPanel.setMenuVisible(pConfig.getBoolean(getPropertyPrefix() + ".menu.visible", true));
 
@@ -154,6 +150,7 @@ public class DSWorkbenchChurchFrame extends AbstractDSWorkbenchFrame implements 
         PropertyHelper.restoreTableProperties(jChurchTable, pConfig, getPropertyPrefix());
     }
 
+    @Override
     public String getPropertyPrefix() {
         return "church.view";
     }
@@ -285,11 +282,11 @@ public class DSWorkbenchChurchFrame extends AbstractDSWorkbenchFrame implements 
         centerPanel.setupTaskPane(transferPane);
     }
 
-    private Village getSelectedCurch() {
+    private KnownVillage getSelectedCurch() {
         int row = jChurchTable.getSelectedRow();
         if (row >= 0) {
             try {
-                return (Village) jChurchTable.getModel().getValueAt(jChurchTable.convertRowIndexToModel(row), 1);
+                return (KnownVillage) jChurchTable.getModel().getValueAt(jChurchTable.convertRowIndexToModel(row), 1);
             } catch (Exception ignored) {
             }
         }
@@ -297,18 +294,18 @@ public class DSWorkbenchChurchFrame extends AbstractDSWorkbenchFrame implements 
     }
 
     private void centerChurchVillage() {
-        Village v = getSelectedCurch();
+        KnownVillage v = getSelectedCurch();
         if (v != null) {
-            DSWorkbenchMainFrame.getSingleton().centerVillage(v);
+            DSWorkbenchMainFrame.getSingleton().centerVillage(v.getVillage());
         } else {
             showInfo("Keine Kirche gewählt");
         }
     }
 
     private void centerChurchInGame() {
-        Village v = getSelectedCurch();
+        KnownVillage v = getSelectedCurch();
         if (v != null) {
-            BrowserCommandSender.centerVillage(v);
+            BrowserInterface.centerVillage(v.getVillage());
         } else {
             showInfo("Keine Kirche gewählt");
         }
@@ -358,12 +355,13 @@ public class DSWorkbenchChurchFrame extends AbstractDSWorkbenchFrame implements 
             for (int i = rows.length - 1; i >= 0; i--) {
                 int row = jChurchTable.convertRowIndexToModel(rows[i]);
                 int col = jChurchTable.convertColumnIndexToModel(1);
-                Village v = ((Village) jChurchTable.getModel().getValueAt(row, col));
+                Village v = ((KnownVillage) jChurchTable.getModel()
+                        .getValueAt(row, col)).getVillage();
                 toRemove.add(v);
             }
             jChurchTable.revalidate();
             //remove all selected markers and update the view once
-            ChurchManager.getSingleton().removeChurches(toRemove.toArray(new Village[]{}));
+            KnownVillageManager.getSingleton().removeChurches(toRemove.toArray(new Village[]{}));
             showSuccess(toRemove.size() + ((toRemove.size() == 1) ? " Kirche gelöscht" : " Kirchen gelöscht"));
         }
     }
@@ -438,10 +436,10 @@ public class DSWorkbenchChurchFrame extends AbstractDSWorkbenchFrame implements 
 
     @Override
     public void resetView() {
-        ChurchManager.getSingleton().addManagerListener(this);
+        KnownVillageManager.getSingleton().addManagerListener(this);
         MarkerManager.getSingleton().addManagerListener(this);
         jChurchTable.getTableHeader().setDefaultRenderer(new DefaultTableHeaderRenderer());
-        UIHelper.initTableColums(jChurchTable, "Radius", "Farbe");
+        UIHelper.initTableColums(jChurchTable, "Stufe", "Farbe");
 
         ((ChurchTableModel) jChurchTable.getModel()).fireTableDataChanged();
     }
@@ -449,26 +447,7 @@ public class DSWorkbenchChurchFrame extends AbstractDSWorkbenchFrame implements 
     @Override
     public void fireVillagesDraggedEvent(List<Village> pVillages, Point pDropLocation) {
     }
-
-    /**
-     * @param args the command line arguments
-     */
-    public static void main(String args[]) {
-        Logger.getRootLogger().addAppender(new ConsoleAppender(new org.apache.log4j.PatternLayout("%d - %-5p - %-20c (%C [%L]) - %m%n")));
-        try {
-            //  UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            UIManager.setLookAndFeel("com.sun.java.swing.plaf.nimbus.NimbusLookAndFeel");
-        } catch (Exception ignored) {
-        }
-        DSWorkbenchChurchFrame.getSingleton().resetView();
-        for (int i = 0; i < 50; i++) {
-            ChurchManager.getSingleton().addChurch(new DummyVillage((short) i, (short) i), 2);
-        }
-
-        DSWorkbenchChurchFrame.getSingleton().setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        DSWorkbenchChurchFrame.getSingleton().setVisible(true);
-
-    }
+    
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private de.tor.tribes.ui.components.CapabilityInfoPanel capabilityInfoPanel1;
     private org.jdesktop.swingx.JXCollapsiblePane infoPanel;
@@ -486,7 +465,11 @@ public class DSWorkbenchChurchFrame extends AbstractDSWorkbenchFrame implements 
 
         jChurchTable.setColumnControlVisible(true);
         jChurchTable.setDefaultRenderer(Color.class, new ColorCellRenderer());
-        jChurchTable.setDefaultEditor(Integer.class, new ChurchLevelCellEditor());
+        
+        DefaultComboBoxModel model = new DefaultComboBoxModel();
+        for(int i = 1; i <= BuildingSettings.getMaxBuildingLevel("church"); i++)
+            model.addElement(i);
+        jChurchTable.setDefaultEditor(Integer.class, new DefaultCellEditor(new JComboBox(model)));
         BufferedImage back = ImageUtils.createCompatibleBufferedImage(5, 5, BufferedImage.BITMASK);
         Graphics2D g = back.createGraphics();
         GeneralPath p = new GeneralPath();

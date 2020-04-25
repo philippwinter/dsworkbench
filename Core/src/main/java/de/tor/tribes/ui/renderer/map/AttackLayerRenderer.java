@@ -21,7 +21,6 @@ import de.tor.tribes.io.UnitHolder;
 import de.tor.tribes.types.Attack;
 import de.tor.tribes.ui.ImageManager;
 import de.tor.tribes.ui.TwoD.ShapeStroke;
-import de.tor.tribes.util.DSCalculator;
 import de.tor.tribes.util.GlobalOptions;
 import de.tor.tribes.util.attack.AttackManager;
 import java.awt.BasicStroke;
@@ -59,7 +58,7 @@ public class AttackLayerRenderer extends AbstractDirectLayerRenderer {
     private void renderAttacks(Point2D.Double viewStartPoint, RenderSettings pSettings, Graphics2D pG2D) {
         HashMap<String, Color> attackColors = new HashMap<>();
         for (UnitHolder unit : DataHolder.getSingleton().getUnits()) {
-            Color unitColor = Color.decode(GlobalOptions.getProperties().getString(unit.getName() + ".color", "#ff0000"));
+            Color unitColor = Color.decode(GlobalOptions.getProperty(unit.getName() + ".color"));
             attackColors.put(unit.getName(), unitColor);
         }
 
@@ -88,8 +87,8 @@ public class AttackLayerRenderer extends AbstractDirectLayerRenderer {
                 10.0f);
         Iterator<String> keys = AttackManager.getSingleton().getGroupIterator();
 
-        boolean drawExtendedVectors = GlobalOptions.getProperties().getBoolean("extended.attack.vectors", false);
-        boolean showAttackMovement = GlobalOptions.getProperties().getBoolean("attack.movement", false);
+        boolean drawExtendedVectors = GlobalOptions.getProperties().getBoolean("extended.attack.vectors");
+        boolean showAttackMovement = GlobalOptions.getProperties().getBoolean("attack.movement");
         while (keys.hasNext()) {
             String plan = keys.next();
             List<ManageableType> elements = AttackManager.getSingleton().getAllElements(plan);
@@ -112,9 +111,9 @@ public class AttackLayerRenderer extends AbstractDirectLayerRenderer {
                     if (showAttackMovement) {
                         unitIcon = ImageManager.getUnitIcon(attack.getUnit());
                         if (unitIcon != null) {
-                            long dur = (long) (DSCalculator.calculateMoveTimeInSeconds(attack.getSource(), attack.getTarget(), attack.getUnit().getSpeed()) * 1000);
                             long arrive = attack.getArriveTime().getTime();
-                            long start = arrive - dur;
+                            long start = attack.getSendTime().getTime();
+                            long dur = arrive - start;
                             long current = System.currentTimeMillis();
 
                             if ((start < current) && (arrive > current)) {
@@ -126,7 +125,7 @@ public class AttackLayerRenderer extends AbstractDirectLayerRenderer {
                                 double yTar = yStart + (yEnd - yStart) * perc;
                                 unitXPos = (int) xTar - unitIcon.getIconWidth() / 2;
                                 unitYPos = (int) yTar - unitIcon.getIconHeight() / 2;
-                            } else if ((start > System.currentTimeMillis()) && (arrive > current)) {
+                            } else if (start > current) {
                                 //attack not running, draw unit between source and target
                                 double perc = .5;
                                 double xTar = xStart + (xEnd - xStart) * perc;

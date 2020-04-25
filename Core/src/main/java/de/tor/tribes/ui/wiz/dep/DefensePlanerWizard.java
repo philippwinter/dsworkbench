@@ -16,11 +16,11 @@
 package de.tor.tribes.ui.wiz.dep;
 
 import de.tor.tribes.io.DataHolder;
+import de.tor.tribes.io.TroopAmountFixed;
 import de.tor.tribes.types.SOSRequest;
 import de.tor.tribes.types.TargetInformation;
 import de.tor.tribes.types.ext.Village;
 import de.tor.tribes.util.GlobalOptions;
-import de.tor.tribes.util.ProfileManager;
 import de.tor.tribes.util.generator.ui.SOSGenerator;
 import java.awt.BorderLayout;
 import java.awt.event.WindowAdapter;
@@ -31,10 +31,7 @@ import java.util.List;
 import java.util.Map;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
-import javax.swing.UIManager;
-import org.apache.commons.lang.time.DateUtils;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.Logger;
+import org.apache.commons.lang3.time.DateUtils;
 import org.netbeans.api.wizard.WizardDisplayer;
 import org.netbeans.api.wizard.WizardResultReceiver;
 import org.netbeans.spi.wizard.Wizard;
@@ -101,9 +98,11 @@ public class DefensePlanerWizard extends WizardPanelProvider {
             TargetInformation info = r.getTargetInformation(target);
             info.setWallLevel(wallLevel);
 
-            info.addTroopInformation(DataHolder.getSingleton().getUnitByPlainName("spear"), (int) Math.rint(Math.random() * 14000));
-            info.addTroopInformation(DataHolder.getSingleton().getUnitByPlainName("sword"), (int) Math.rint(Math.random() * 14000));
-            info.addTroopInformation(DataHolder.getSingleton().getUnitByPlainName("heavy"), (int) Math.rint(Math.random() * 5000));
+            TroopAmountFixed troops = new TroopAmountFixed();
+            troops.setAmountForUnit("spear", (int) Math.rint(Math.random() * 14000));
+            troops.setAmountForUnit("sword", (int) Math.rint(Math.random() * 14000));
+            troops.setAmountForUnit("heavy", (int) Math.rint(Math.random() * 5000));
+            info.setTroops(troops);
 
             int cnt = (int) Math.rint(maxAttackCount * Math.random());
             for (int j = 0; j < cnt; j++) {
@@ -159,38 +158,5 @@ public class DefensePlanerWizard extends WizardPanelProvider {
         parent.pack();
         parent.setVisible(true);
         new SOSGenerator().setVisible(true);
-    }
-
-    public static void main(String[] args) throws Exception {
-        try {
-            // UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            UIManager.setLookAndFeel("com.sun.java.swing.plaf.nimbus.NimbusLookAndFeel");
-        } catch (Exception ignored) {
-        }
-
-        Logger.getRootLogger().addAppender(new ConsoleAppender(new org.apache.log4j.PatternLayout("%d - %-5p - %-20c (%C [%L]) - %m%n")));
-        GlobalOptions.setSelectedServer("de77");
-        ProfileManager.getSingleton().loadProfiles();
-        GlobalOptions.setSelectedProfile(ProfileManager.getSingleton().getProfiles("de77")[0]);
-        DataHolder.getSingleton().loadData(false);
-        GlobalOptions.loadUserData();
-
-    /*    for (SOSRequest r : createSampleRequests()) {
-            SOSManager.getSingleton().addManagedElement(r);
-        }*/
-
-new SOSGenerator().setVisible(true);
-        new DefensePlanerWizard().show();
-        // DefenseAnalysePanel.getSingleton().setData(createSampleRequests());
-       /*
-         * final JFrame f = new JFrame(); f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE); JPanel p = new JPanel(); p.setLayout(new
-         * BorderLayout()); WizardDisplayer.installInContainer(p, BorderLayout.CENTER, wizard, null, null, new WizardResultReceiver() {
-         *
-         * @Override public void finished(Object o) { System.out.println(o); }
-         *
-         * @Override public void cancelled(Map map) { System.out.println("Cancel: " + map); f.dispose(); } }); f.getContentPane().add(p);
-         * f.pack(); f.setVisible(true);
-         */
-
     }
 }

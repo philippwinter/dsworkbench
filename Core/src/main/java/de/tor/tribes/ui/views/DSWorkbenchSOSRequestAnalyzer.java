@@ -17,6 +17,7 @@ package de.tor.tribes.ui.views;
 
 import de.tor.tribes.control.ManageableType;
 import de.tor.tribes.io.DataHolder;
+import de.tor.tribes.io.TroopAmountFixed;
 import de.tor.tribes.io.UnitHolder;
 import de.tor.tribes.php.UnitTableInterface;
 import de.tor.tribes.types.*;
@@ -24,18 +25,17 @@ import de.tor.tribes.types.ext.Tribe;
 import de.tor.tribes.types.ext.Village;
 import de.tor.tribes.ui.components.ClickAccountPanel;
 import de.tor.tribes.ui.components.ProfileQuickChangePanel;
-import de.tor.tribes.ui.windows.AbstractDSWorkbenchFrame;
-import de.tor.tribes.ui.panels.GenericTestPanel;
 import de.tor.tribes.ui.models.DefenseToolModel;
 import de.tor.tribes.ui.models.SupportsModel;
+import de.tor.tribes.ui.panels.GenericTestPanel;
 import de.tor.tribes.ui.renderer.*;
+import de.tor.tribes.ui.windows.AbstractDSWorkbenchFrame;
 import de.tor.tribes.ui.windows.VillageSupportFrame;
 import de.tor.tribes.ui.wiz.dep.DefenseAnalysePanel;
 import de.tor.tribes.ui.wiz.ret.RetimerDataPanel;
 import de.tor.tribes.ui.wiz.tap.TacticsPlanerWizard;
 import de.tor.tribes.util.*;
 import de.tor.tribes.util.bb.SosListFormatter;
-import de.tor.tribes.util.generator.ui.SOSGenerator;
 import de.tor.tribes.util.sos.SOSManager;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -55,13 +55,12 @@ import java.io.IOException;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.Map.Entry;
 import javax.swing.*;
-
-import org.apache.commons.configuration.Configuration;
-import org.apache.commons.lang.time.DateUtils;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.Logger;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.configuration2.Configuration;
+import org.apache.commons.lang3.time.DateUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jdesktop.swingx.JXButton;
 import org.jdesktop.swingx.JXTaskPane;
 import org.jdesktop.swingx.decorator.HighlighterFactory;
@@ -71,6 +70,7 @@ import org.jdesktop.swingx.table.TableColumnExt;
 /**
  *
  * @author Torridity
+ * @author extremeCrazyCoder
  */
 public class DSWorkbenchSOSRequestAnalyzer extends AbstractDSWorkbenchFrame implements ActionListener {
 
@@ -82,7 +82,7 @@ public class DSWorkbenchSOSRequestAnalyzer extends AbstractDSWorkbenchFrame impl
             removeSelection();
         }
     }
-    private static Logger logger = Logger.getLogger("SOSRequestAnalyzer");
+    private static Logger logger = LogManager.getLogger("SOSRequestAnalyzer");
     private static DSWorkbenchSOSRequestAnalyzer SINGLETON = null;
     private GenericTestPanel centerPanel = null;
     private DefenseAnalyzer a = null;
@@ -145,7 +145,7 @@ public class DSWorkbenchSOSRequestAnalyzer extends AbstractDSWorkbenchFrame impl
         jSupportsTable.setHighlighters(HighlighterFactory.createAlternateStriping(Constants.DS_ROW_A, Constants.DS_ROW_B));
         jSupportsTable.getTableHeader().setDefaultRenderer(new DefaultTableHeaderRenderer());
         jSupportsTable.setDefaultRenderer(Date.class, new ColoredDateCellRenderer());
-        jSupportsTable.setDefaultRenderer(Boolean.class, new SentNotSentCellRenderer());
+        jSupportsTable.setDefaultRenderer(Boolean.class, new CustomBooleanRenderer(CustomBooleanRenderer.LayoutStyle.SENT_NOTSENT));
 
         new SupportCountdownThread().start();
         new SupportColorUpdateThread().start();
@@ -363,12 +363,12 @@ public class DSWorkbenchSOSRequestAnalyzer extends AbstractDSWorkbenchFrame impl
                 if (rows.length == 1 || clickAccount.useClick()) {
                     Village source = defense.getSupporter();
                     Village target = defense.getTarget();
-                    Hashtable<UnitHolder, Integer> units = DSWorkbenchSettingsDialog.getSingleton().getDefense();
-                    if (units == null || units.isEmpty()) {
+                    TroopAmountFixed units = DSWorkbenchSettingsDialog.getSingleton().getDefense();
+                    if (units == null || units.hasUnits()) {
                         showError("Fehlerhafte Einstellungen für die unterstützenden Einheiten");
                         break;
                     }
-                    if (!BrowserCommandSender.sendTroops(source, target, units, profileQuickchangePanel.getSelectedProfile())) {
+                    if (!BrowserInterface.sendTroops(source, target, units, profileQuickchangePanel.getSelectedProfile())) {
                         if (rows.length > 1) {
                             clickAccount.giveClickBack();
                             showError("Fehler beim Öffnen des Browsers");
@@ -406,11 +406,10 @@ public class DSWorkbenchSOSRequestAnalyzer extends AbstractDSWorkbenchFrame impl
                 Village target = defense.getTarget();
                 int needed = defense.getNeededSupports();
                 int available = defense.getSupports().length;
-                Hashtable<UnitHolder, Integer> split = DSWorkbenchSettingsDialog.getSingleton().getDefense();
-                Hashtable<UnitHolder, Integer> need = new Hashtable<>();
-                Set<Entry<UnitHolder, Integer>> entries = split.entrySet();
-                for (Entry<UnitHolder, Integer> entry : entries) {
-                    need.put(entry.getKey(), (needed - available) * entry.getValue());
+                TroopAmountFixed split = DSWorkbenchSettingsDialog.getSingleton().getDefense();
+                TroopAmountFixed need = new TroopAmountFixed();
+                for (UnitHolder unit: DataHolder.getSingleton().getUnits()) {
+                    need.setAmountForUnit(unit, (needed - available) * split.getAmountForUnit(unit));
                 }
 
                 if (extended) {
@@ -433,7 +432,7 @@ public class DSWorkbenchSOSRequestAnalyzer extends AbstractDSWorkbenchFrame impl
         }
     }
 
-    private String buildSimpleRequestTable(Village pTarget, Hashtable<UnitHolder, Integer> pNeed, DefenseInformation pDefense) {
+    private String buildSimpleRequestTable(Village pTarget, TroopAmountFixed pNeed, DefenseInformation pDefense) {
         StringBuilder b = new StringBuilder();
         SimpleDateFormat df = new SimpleDateFormat("dd.MM.yy HH:mm:ss");
         b.append("[table]\n");
@@ -441,8 +440,8 @@ public class DSWorkbenchSOSRequestAnalyzer extends AbstractDSWorkbenchFrame impl
         int colCount = 0;
 
         for (UnitHolder unit : DataHolder.getSingleton().getUnits()) {
-            Integer value = pNeed.get(unit);
-            if (value != null && value > 0) {
+            int value = pNeed.getAmountForUnit(unit);
+            if (value > 0) {
                 b.append("[|]").append("[unit]").append(unit.getPlainName()).append("[/unit]");
                 colCount++;
             }
@@ -454,8 +453,8 @@ public class DSWorkbenchSOSRequestAnalyzer extends AbstractDSWorkbenchFrame impl
         nf.setMaximumFractionDigits(0);
         b.append("[*]");
         for (UnitHolder unit : DataHolder.getSingleton().getUnits()) {
-            Integer value = pNeed.get(unit);
-            if (value != null && value > 0) {
+            int value = pNeed.getAmountForUnit(unit);
+            if (value > 0) {
                 b.append("[|]").append(nf.format(value));
             }
         }
@@ -501,7 +500,7 @@ public class DSWorkbenchSOSRequestAnalyzer extends AbstractDSWorkbenchFrame impl
     }
 
     public de.tor.tribes.io.UnitHolder getSlowestUnit() {
-        return TroopHelper.getSlowestUnit(DSWorkbenchSettingsDialog.getSingleton().getDefense());
+        return DSWorkbenchSettingsDialog.getSingleton().getDefense().getSlowestUnit();
     }
 
     private void removeSelection() {
@@ -510,7 +509,7 @@ public class DSWorkbenchSOSRequestAnalyzer extends AbstractDSWorkbenchFrame impl
     }
 
     private void copySelectionToClipboardAsBBCode() {
-        Hashtable<Tribe, SOSRequest> selectedRequests = new Hashtable<>();
+        HashMap<Tribe, SOSRequest> selectedRequests = new HashMap<>();
         List<DefenseInformation> selection = getSelectedRows();
         if (selection.isEmpty()) {
             showInfo("Keine SOS Anfragen eingelesen");
@@ -539,11 +538,7 @@ public class DSWorkbenchSOSRequestAnalyzer extends AbstractDSWorkbenchFrame impl
             }
 
             List<SOSRequest> requests = new LinkedList<>();
-
-            Enumeration<Tribe> tribeKeys = selectedRequests.keys();
-            while (tribeKeys.hasMoreElements()) {
-                requests.add(selectedRequests.get(tribeKeys.nextElement()));
-            }
+            CollectionUtils.addAll(requests, selectedRequests.values());
             buffer.append(new SosListFormatter().formatElements(requests,
                     extended));
 
@@ -803,9 +798,7 @@ private void fireAlwaysOnTopEvent(javax.swing.event.ChangeEvent evt) {//GEN-FIRS
         model.clear();
         for (ManageableType t : SOSManager.getSingleton().getAllElements()) {
             SOSRequest r = (SOSRequest) t;
-            Enumeration<Village> targets = r.getTargets();
-            while (targets.hasMoreElements()) {
-                Village target = targets.nextElement();
+            for(Village target: r.getTargets()) {
                 DefenseInformation d = r.getDefenseInformation(target);
                 for (Defense i : d.getSupports()) {
                     model.addRow(i);
@@ -820,12 +813,12 @@ private void fireAlwaysOnTopEvent(javax.swing.event.ChangeEvent evt) {//GEN-FIRS
             Transferable t = Toolkit.getDefaultToolkit().getSystemClipboard().getContents(null);
             String data = (String) t.getTransferData(DataFlavor.stringFlavor);
 
-            List<SOSRequest> requests = PluginManager.getSingleton().executeSOSParserParser(data);
+            List<SOSRequest> requests = PluginManager.getSingleton().executeSOSParser(data);
             if (requests != null && !requests.isEmpty()) {
                 for (SOSRequest request : requests) {
                     SOSManager.getSingleton().addRequest(request);
-                    findFakes(request);
                 }
+                findFakes();
                 if (!ServerSettings.getSingleton().isMillisArrival()) {
                     showInfo("Der aktuelle Server unterstützt keine Millisekunden.\n"
                             + "Daher werden bereits eingelesene Angriffe nicht herausgefiltert.\n"
@@ -850,6 +843,17 @@ private void fireAlwaysOnTopEvent(javax.swing.event.ChangeEvent evt) {//GEN-FIRS
             jProgressBar1.setValue(0);
             jProgressBar1.setString("Analysiere Daten...");
             jButton1.setEnabled(false);
+            
+            TroopAmountFixed stdOffense = DSWorkbenchSettingsDialog.getSingleton().getOffense();
+            TroopAmountFixed stdDefense = DSWorkbenchSettingsDialog.getSingleton().getDefense();
+            if(stdOffense.getTroopPopCount() == 0 || stdDefense.getTroopPopCount() == 0) {
+                showInfo("kann die daten nicht analysieren, weil standard Off / Unterstützung nicht gesetzt sind (in den Einstellungen)");
+                jProgressBar1.setString("Bereit");
+                jButton1.setEnabled(true);
+                updateSupportTable();
+                return;
+            }
+            
             a = new DefenseAnalyzer(new DefenseAnalyzer.DefenseAnalyzerListener() {
 
                 @Override
@@ -867,9 +871,10 @@ private void fireAlwaysOnTopEvent(javax.swing.event.ChangeEvent evt) {//GEN-FIRS
                     jProgressBar1.setString("Bereit");
                     updateSupportTable();
                 }
-            }, DSWorkbenchSettingsDialog.getSingleton().getOffense(),
-                    DSWorkbenchSettingsDialog.getSingleton().getDefense(),
-                    GlobalOptions.getProperties().getInt("max.sim.rounds", 500), GlobalOptions.getProperties().getInt("max.loss.ratio", 50), pReAnalyze);
+            }, stdOffense, stdDefense,
+                    GlobalOptions.getProperties().getInt("max.sim.rounds"),
+                    GlobalOptions.getProperties().getInt("max.loss.ratio"),
+                    pReAnalyze);
             a.start();
         }
     }
@@ -887,37 +892,107 @@ private void fireAlwaysOnTopEvent(javax.swing.event.ChangeEvent evt) {//GEN-FIRS
 
         for (ManageableType e : SOSManager.getSingleton().getAllElements()) {
             SOSRequest r = (SOSRequest) e;
-            Enumeration<Village> targets = r.getTargets();
-            while (targets.hasMoreElements()) {
-                model.addRow(r.getDefenseInformation(targets.nextElement()));
+            for(Village target: r.getTargets()) {
+                model.addRow(r.getDefenseInformation(target));
             }
         }
         model.fireTableDataChanged();
     }
 
-    private void findFakes(SOSRequest pRequest) {
-        Enumeration<Village> targets = pRequest.getTargets();
-        while (targets.hasMoreElements()) {
-            Village target = targets.nextElement();
-            TargetInformation targetInfo = pRequest.getTargetInformation(target);
+    private void findFakes() {
+        Boolean fakesOrAGsFound = false;
+        
+        if(GlobalOptions.getProperties().getBoolean("sos.mark.all.duplicates.as.fake")) {
+            List<Village> sourcesOnce = new ArrayList<>();
+            List<Village> sourcesMoreThanOnce = new ArrayList<>();
+            
+            for (ManageableType manTyp: SOSManager.getSingleton().getAllElements()) {
+                SOSRequest pRequest = (SOSRequest) manTyp;
+                for(Village target: pRequest.getTargets()) {
+                    TargetInformation targetInfo = pRequest.getTargetInformation(target);
+                    
+                    for(Village targetSource: targetInfo.getSources()) {
+                        if(sourcesOnce.contains(targetSource) &&
+                                !sourcesMoreThanOnce.contains(targetSource)) {
+                            sourcesMoreThanOnce.add(targetSource);
+                        }
+                        else {
+                            sourcesOnce.add(targetSource);
+                        }
+                    }
+                }
+            }
+            
+            for (ManageableType manTyp: SOSManager.getSingleton().getAllElements()) {
+                SOSRequest pRequest = (SOSRequest) manTyp;
+                
+                for(Village target: pRequest.getTargets()) {
+                    TargetInformation targetInfo = pRequest.getTargetInformation(target);
 
-            //check for multiple attacks from same source to same target
-            Enumeration<Village> sources = targetInfo.getSources();
-            while (sources.hasMoreElements()) {
-                Village source = sources.nextElement();
-                if (targetInfo.getAttackCountFromSource(source) > 1) {
-                    for (TimedAttack att : targetInfo.getAttacksFromSource(source)) {
-                        if (!att.isPossibleFake() && !att.isPossibleSnob()) {//check only once
-                            long sendTime = att.getlArriveTime() - (long) (DSCalculator.calculateMoveTimeInSeconds(source, target, DataHolder.getSingleton().getUnitByPlainName("ram").getSpeed()) * 1000);
-                            if (sendTime < System.currentTimeMillis()) {
+                    Enumeration<TimedAttack> attacks = Collections.enumeration(targetInfo.getAttacks());
+                    while (attacks.hasMoreElements()) {
+                        TimedAttack att = attacks.nextElement();
+
+                        //check for snobs
+                        long sendTime = att.getlArriveTime() - (long) (
+                                DSCalculator.calculateMoveTimeInSeconds(att.getSource(), target,
+                                DataHolder.getSingleton().getUnitByPlainName("ram").getSpeed()) * 1000);
+                        if (sendTime >= System.currentTimeMillis()) {
+                            att.setPossibleSnob(true);
+                            att.setPossibleFake(false);
+                            fakesOrAGsFound = true;
+                        }
+
+                        //check for multiple attacks from same source
+                        if(sourcesMoreThanOnce.contains(att.getSource())) {
+                            if (!att.isPossibleSnob()) {//ignore snobs
                                 att.setPossibleSnob(false);
                                 att.setPossibleFake(true);
-                            } else {
-                                att.setPossibleSnob(true);
-                                att.setPossibleFake(false);
+                                fakesOrAGsFound = true;
                             }
                         }
                     }
+                }
+            }
+        }
+        else {
+            for (ManageableType manTyp: SOSManager.getSingleton().getAllElements()) {
+                SOSRequest pRequest = (SOSRequest) manTyp;
+                
+                for(Village target: pRequest.getTargets()) {
+                    TargetInformation targetInfo = pRequest.getTargetInformation(target);
+
+                    //check for multiple attacks from same source to same target
+                    for(Village source: targetInfo.getSources()) {
+                        if (targetInfo.getAttackCountFromSource(source) > 1) {
+                            for (TimedAttack att : targetInfo.getAttacksFromSource(source)) {
+                                if (!att.isPossibleFake() && !att.isPossibleSnob()) {//check only once
+                                    long sendTime = att.getlArriveTime() - (long) (DSCalculator.calculateMoveTimeInSeconds(source, target, DataHolder.getSingleton().getUnitByPlainName("ram").getSpeed()) * 1000);
+                                    if (sendTime < System.currentTimeMillis()) {
+                                        att.setPossibleSnob(false);
+                                        att.setPossibleFake(true);
+                                    } else {
+                                        att.setPossibleSnob(true);
+                                        att.setPossibleFake(false);
+                                    }
+                                    fakesOrAGsFound = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if(fakesOrAGsFound) {
+            //if we have found something inside the Atts we have to rebuild the Defence requests
+            logger.debug("refreshing deff requests");
+            
+            for (ManageableType manTyp: SOSManager.getSingleton().getAllElements()) {
+                SOSRequest pRequest = (SOSRequest) manTyp;
+                
+                for(Village target: pRequest.getTargets()) {
+                    pRequest.getDefenseInformation(target).updateAttackInfo();
                 }
             }
         }
@@ -939,10 +1014,12 @@ private void fireAlwaysOnTopEvent(javax.swing.event.ChangeEvent evt) {//GEN-FIRS
             TargetInformation info = r.addTarget(target);
             info.setWallLevel(wallLevel);
 
-            info.addTroopInformation(DataHolder.getSingleton().getUnitByPlainName("spear"), (int) Math.rint(Math.random() * 14000));
-            info.addTroopInformation(DataHolder.getSingleton().getUnitByPlainName("sword"), (int) Math.rint(Math.random() * 14000));
-            info.addTroopInformation(DataHolder.getSingleton().getUnitByPlainName("heavy"), (int) Math.rint(Math.random() * 5000));
-
+            TroopAmountFixed troops = new TroopAmountFixed();
+            troops.setAmountForUnit("spear", (int) Math.rint(Math.random() * 14000));
+            troops.setAmountForUnit("sword", (int) Math.rint(Math.random() * 14000));
+            troops.setAmountForUnit("heavy", (int) Math.rint(Math.random() * 5000));
+            info.setTroops(troops);
+            
             int cnt = (int) Math.rint(maxAttackCount * Math.random());
             for (int j = 0; j < cnt; j++) {
                 int idx = (int) Math.rint(Math.random() * (attackerVillages.length - 2));
@@ -990,28 +1067,6 @@ private void fireAlwaysOnTopEvent(javax.swing.event.ChangeEvent evt) {//GEN-FIRS
         }
     }
 
-    /**
-     * @param args the command line arguments
-     */
-    public static void main(String args[]) {
-        Logger.getRootLogger().addAppender(new ConsoleAppender(new org.apache.log4j.PatternLayout("%d - %-5p - %-20c (%C [%L]) - %m%n")));
-        GlobalOptions.setSelectedServer("de77");
-        ProfileManager.getSingleton().loadProfiles();
-        GlobalOptions.setSelectedProfile(ProfileManager.getSingleton().getProfiles("de77")[0]);
-        DataHolder.getSingleton().loadData(false);
-        GlobalOptions.loadUserData();
-        try {
-            //  UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            UIManager.setLookAndFeel("com.sun.java.swing.plaf.nimbus.NimbusLookAndFeel");
-        } catch (Exception ignored) {
-        }
-        // createSampleRequests();
-        new SOSGenerator().setVisible(true);
-        DSWorkbenchSOSRequestAnalyzer.getSingleton().resetView();
-        DSWorkbenchSOSRequestAnalyzer.getSingleton().setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        DSWorkbenchSOSRequestAnalyzer.getSingleton().setVisible(true);
-    }
-
     @Override
     public void fireVillagesDraggedEvent(List<Village> pVillages, Point pDropLocation) {
     }
@@ -1039,6 +1094,7 @@ class SupportColorUpdateThread extends Thread {
         setDaemon(true);
     }
 
+    @Override
     public void run() {
         while (true) {
             try {

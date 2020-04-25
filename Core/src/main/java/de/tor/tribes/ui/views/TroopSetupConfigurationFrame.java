@@ -16,9 +16,8 @@
 package de.tor.tribes.ui.views;
 
 import de.tor.tribes.control.GenericManagerListener;
-import de.tor.tribes.io.DataHolder;
+import de.tor.tribes.io.TroopAmountElement;
 import de.tor.tribes.types.StandardAttack;
-import de.tor.tribes.types.StandardAttackElement;
 import de.tor.tribes.ui.ImageManager;
 import de.tor.tribes.ui.editors.NoteIconCellEditor;
 import de.tor.tribes.ui.editors.StandardAttackElementEditor;
@@ -30,7 +29,6 @@ import de.tor.tribes.ui.renderer.UnitTableHeaderRenderer;
 import de.tor.tribes.util.Constants;
 import de.tor.tribes.util.GlobalOptions;
 import de.tor.tribes.util.JOptionPaneHelper;
-import de.tor.tribes.util.ProfileManager;
 import de.tor.tribes.util.attack.StandardAttackManager;
 import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
@@ -40,8 +38,6 @@ import javax.swing.DefaultComboBoxModel;
 import javax.swing.JComponent;
 import javax.swing.JOptionPane;
 import javax.swing.KeyStroke;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.Logger;
 import org.jdesktop.swingx.decorator.HighlighterFactory;
 
 /**
@@ -171,8 +167,8 @@ public class TroopSetupConfigurationFrame extends javax.swing.JDialog implements
         jHelpPanel.setPreferredSize(new java.awt.Dimension(200, 200));
         jHelpPanel.setLayout(new java.awt.GridBagLayout());
 
-        jTextPane1.setContentType("text/html");
-        jTextPane1.setText("<html>Standardangriffe sind voreingestellte Angriffe mit einer festgelegten Truppenzahl, die an vielen Stellen in DS Workbench verwendet werden k&ouml;nnen. So dienen sie z.B. dazu, die Angriffe eines Angriffsplans im Versammlungsplatz zu \n&ouml;ffnen und, sofern das DS Workbench Userscript installiert ist, die Truppen direkt einzuf&uuml;gen. Voraussetzung ist neben dem installierten Userscript auch, dass man die Truppeninformationen aus dem Spielaccount nach DS Workbench importiert \nhat. Mehr dazu erf&auml;hrst du in der Programmhilfe, die du mit F1 &ouml;ffnest. F&uuml;r die Festlegung von Standardangriffen hast du verschiedene M&ouml;glichkeiten:\n<UL><LI><I>Ganze Zahlen</I>, um eine feste Anzahl einer Truppenart einzufügen (z.B: '100')\n<LI><I>Alle</I>, um alle Truppen von einem Typ einzufügen die in DS Workbench importiert sind (z.B: 'Alle'). Beachte, dass diese Anzahl nicht der Zahl im Spiel entsprechen muss, falls die importierten Truppeninformationen veraltet sind.\n<LI><I>Alle - X</I>, um alle Truppen abzüglich einer bestimmten Anzahl einzufügen (z.B: 'Alle - 100') \n<LI><I>X%</I>, um einen prozentualen Anteil aller Truppen einzufügen (z.B: '50%') \n</UL> </html>");
+        jTextPane1.setContentType("text/html"); // NOI18N
+        jTextPane1.setText("<html>Standardangriffe sind voreingestellte Angriffe mit einer festgelegten Truppenzahl, die an vielen Stellen in DS Workbench verwendet werden k&ouml;nnen. \nSo dienen sie z.B. dazu, die Angriffe eines Angriffsplans im Versammlungsplatz zu &ouml;ffnen und die Truppen direkt einzuf&uuml;gen. \nDazu müssen die Truppeninformationen aus dem Spielaccount nach DS Workbench importiert werden.\nMehr dazu erf&auml;hrst du in der Programmhilfe, die du mit F1 &ouml;ffnest.\nIn den Standardangriffen k&ouml;nnen verschiedene Konstanten und mathematische Rechenoperationen benutzt werden :\n<UL><LI><B>+ - * /</B> Die Mathematischen grundrechenoperatoren</LI>\n<LI><B>^</B> um eine Zahl zu Potenzieren</LI>\n<LI><B>%</B> der Modulo-Operator</LI>\n<LI><B>alle</B> entspricht der Anzahl an Truppen dieses Typs, die gerade im Dorf vorhanden sind</LI>\n<LI><B>X%</B> um einen prozentualen Anteil aller Truppen einzufügen (z.B: '50%') \n<LI><B>rnd</B> eine Zufallszahl von 0 bis 1 (um z.B. bei 50% der Fakes einen spy mitzuschicken)</LI>\n<LI><B>fake</B> Die mindestanzahl an <B>BH Plätzen</B> die bei einem Fake abgeschickt werden müssen</LI>\n<LI><B>&gt; &lt; = &lt;&gt; &gt;= &lt;=</B> Vergleichsoperatoren (1 bei ja / 0 bei nein)</LI>\n<LI><B>alle_{einheitenname}</B> entspricht der Anzahl an Truppen eines beliebigen Typs die gerade im Dorf vorhanden sind. <br>\nMögliche Namen (sofern auf der Welt vorhanden) spear, sword, axe, archer, spy, light, marche, heavy, ram, catapult, knigh, snob, militia <br>\nDie deutschen Namen der entsprechenden Truppen sollten genauso funktionieren</LI>\n</UL>\nDas Ergebnis wird abgerundet bevor die Truppen losgeschickt werden.\n </html>");
         jScrollPane2.setViewportView(jTextPane1);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
@@ -270,8 +266,8 @@ public class TroopSetupConfigurationFrame extends javax.swing.JDialog implements
         jAttackTypeTable.setModel(new AttackTypeTableModel());
         jAttackTypeTable.setHighlighters(HighlighterFactory.createAlternateStriping(Constants.DS_ROW_A, Constants.DS_ROW_B));
         jAttackTypeTable.getTableHeader().setDefaultRenderer(new UnitTableHeaderRenderer());
-        jAttackTypeTable.setDefaultRenderer(StandardAttackElement.class, new StandardAttackTypeCellRenderer());
-        jAttackTypeTable.setDefaultEditor(StandardAttackElement.class, new StandardAttackElementEditor());
+        jAttackTypeTable.setDefaultRenderer(TroopAmountElement.class, new StandardAttackTypeCellRenderer());
+        jAttackTypeTable.setDefaultEditor(TroopAmountElement.class, new StandardAttackElementEditor());
         jAttackTypeTable.setDefaultEditor(Integer.class, new NoteIconCellEditor(NoteIconCellEditor.ICON_TYPE.NOTE));
         jAttackTypeTable.setRowHeight(24);
         jAttackTypeTable.getColumnExt(0).setMinWidth(120);
@@ -332,49 +328,7 @@ public class TroopSetupConfigurationFrame extends javax.swing.JDialog implements
                     + ((delta > 0) ? ("\n" + delta + " Eintrag/Einträge können nicht gelöscht werden.") : ""), "Information");
         }
     }
-
-    /**
-     * @param args the command line arguments
-     */
-    public static void main(String args[]) {
-        /*
-         * Set the Nimbus look and feel
-         */
-        //<editor-fold defaultstate="collapsed" desc=" Look and feel setting code (optional) ">
-        /*
-         * If Nimbus (introduced in Java SE 6) is not available, stay with the default look and feel. For details see
-         * http://download.oracle.com/javase/tutorial/uiswing/lookandfeel/plaf.html
-         */
-        try {
-            for (javax.swing.UIManager.LookAndFeelInfo info : javax.swing.UIManager.getInstalledLookAndFeels()) {
-                if ("Nimbus".equals(info.getName())) {
-                    javax.swing.UIManager.setLookAndFeel(info.getClassName());
-                    break;
-                }
-            }
-        } catch (ClassNotFoundException | javax.swing.UnsupportedLookAndFeelException | IllegalAccessException | InstantiationException ex) {
-            java.util.logging.Logger.getLogger(TroopSetupConfigurationFrame.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
-        }
-        //</editor-fold>
-
-        /*
-         * Create and display the form
-         */
-        
-        Logger.getRootLogger().addAppender(new ConsoleAppender(new org.apache.log4j.PatternLayout("%d - %-5p - %-20c (%C [%L]) - %m%n")));
-        GlobalOptions.setSelectedServer("de77");
-        ProfileManager.getSingleton().loadProfiles();
-        GlobalOptions.setSelectedProfile(ProfileManager.getSingleton().getProfiles("de77")[0]);
-        DataHolder.getSingleton().loadData(false);
-        GlobalOptions.loadUserData();
-        java.awt.EventQueue.invokeLater(new Runnable() {
-            
-            public void run() {
-                TroopSetupConfigurationFrame.getSingleton().setup();
-                TroopSetupConfigurationFrame.getSingleton().setVisible(true);
-            }
-        });
-    }
+    
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private de.tor.tribes.ui.components.CapabilityInfoPanel capabilityInfoPanel1;
     private javax.swing.JButton jAddTypeButton;

@@ -19,7 +19,6 @@ import de.tor.tribes.control.GenericManagerListener;
 import de.tor.tribes.dssim.ui.DSWorkbenchSimulatorFrame;
 import de.tor.tribes.io.DataHolder;
 import de.tor.tribes.io.UnitHolder;
-import de.tor.tribes.types.Church;
 import de.tor.tribes.types.FightReport;
 import de.tor.tribes.types.ext.Ally;
 import de.tor.tribes.types.ext.Barbarians;
@@ -37,7 +36,6 @@ import de.tor.tribes.ui.wiz.tap.TacticsPlanerWizard;
 import de.tor.tribes.util.*;
 import de.tor.tribes.util.attack.AttackManager;
 import de.tor.tribes.util.bb.VillageListFormatter;
-import de.tor.tribes.util.church.ChurchManager;
 import de.tor.tribes.util.interfaces.MapShotListener;
 import de.tor.tribes.util.interfaces.ToolChangeListener;
 import de.tor.tribes.util.mark.MarkerManager;
@@ -47,13 +45,12 @@ import de.tor.tribes.util.stat.StatManager;
 import de.tor.tribes.util.tag.TagManager;
 import de.tor.tribes.util.troops.TroopsManager;
 import de.tor.tribes.util.troops.VillageTroopsHolder;
-import org.apache.log4j.Logger;
-
-import javax.swing.*;
+import de.tor.tribes.util.village.KnownVillageManager;
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.Transferable;
+import java.awt.datatransfer.UnsupportedFlavorException;
 import java.awt.dnd.*;
 import java.awt.event.*;
 import java.awt.geom.AffineTransform;
@@ -62,9 +59,14 @@ import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.IOException;
 import java.util.*;
 import java.util.List;
 import java.util.Timer;
+import javax.swing.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * @author Charon
@@ -112,7 +114,7 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
         }
     }
     // <editor-fold defaultstate="collapsed" desc=" Member variables ">
-    private static Logger logger = Logger.getLogger("MapCanvas");
+    private static final Logger logger = LogManager.getLogger("MapCanvas");
     private BufferedImage mBuffer = null;
     //private VolatileImage mBuffer = null;
     private double dCenterX = 500.0;
@@ -188,6 +190,7 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
                 public void run() {
                     SwingUtilities.invokeLater(new Runnable() {
 
+                        @Override
                         public void run() {
                             repaint();
                         }
@@ -319,6 +322,10 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
         return selectionRect;
     }
 
+    public boolean isActionMenuShowing(){
+        return jVillageActionsMenu.isShowing();
+    }
+    
     private void initListeners() {
         dragSource = DragSource.getDefaultDragSource();
         dragSource.createDefaultDragGestureRecognizer(this, // What component
@@ -394,8 +401,7 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
                         //center village on click with default cursor
                         if (v != null) {
                             Tribe t = GlobalOptions.getSelectedProfile().getTribe();
-                            if ((v != null)
-                                    && (t != null)
+                            if ((t != null)
                                     && (v.getTribe() != Barbarians.getSingleton())
                                     && (t != Barbarians.getSingleton())
                                     && (t.getId() == v.getTribe().getId())) {
@@ -466,7 +472,7 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
                             Village u = DSWorkbenchMainFrame.getSingleton().getCurrentUserVillage();
                             if ((u != null) && (v != null)) {
                                 if (Desktop.isDesktopSupported()) {
-                                    BrowserCommandSender.sendTroops(u, v);
+                                    BrowserInterface.sendTroops(u, v);
                                 }
                             }
                         }
@@ -477,7 +483,7 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
                             Village u = DSWorkbenchMainFrame.getSingleton().getCurrentUserVillage();
                             if ((u != null) && (v != null)) {
                                 if (Desktop.isDesktopSupported()) {
-                                    BrowserCommandSender.sendRes(u, v);
+                                    BrowserInterface.sendRes(u, v);
                                 }
                             }
                         }
@@ -513,25 +519,56 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
                     }
                     case ImageManager.CURSOR_CHURCH_1: {
                         if (v != null) {
-                            ChurchManager.getSingleton().addChurch(v, Church.RANGE1);
+                            KnownVillageManager.getSingleton().addChurchLevel(v, 1);
                         }
                         break;
                     }
                     case ImageManager.CURSOR_CHURCH_2: {
                         if (v != null) {
-                            ChurchManager.getSingleton().addChurch(v, Church.RANGE2);
+                            KnownVillageManager.getSingleton().addChurchLevel(v, 2);
                         }
                         break;
                     }
                     case ImageManager.CURSOR_CHURCH_3: {
                         if (v != null) {
-                            ChurchManager.getSingleton().addChurch(v, Church.RANGE3);
+                            KnownVillageManager.getSingleton().addChurchLevel(v, 3);
                         }
                         break;
                     }
                     case ImageManager.CURSOR_REMOVE_CHURCH: {
                         if (v != null) {
-                            ChurchManager.getSingleton().removeChurch(v);
+                            KnownVillageManager.getSingleton().removeChurch(v);
+                        }
+                        break;
+                    }
+                    case ImageManager.CURSOR_WATCHTOWER_1: {
+                        if (v != null) {
+                            KnownVillageManager.getSingleton().addWatchtowerLevel(v, 1);
+                        }
+                        break;
+                    }
+                    case ImageManager.CURSOR_WATCHTOWER_INPUT: {
+                        if (v != null) {
+                            int level = -1;
+                            String input = "";
+                            while (level < 0 && input != null) {
+                                input = JOptionPane.showInputDialog(null, "Welcher Level?");
+                                
+                                if(input != null) {
+                                    try {
+                                        level = Integer.parseInt(input);
+                                    } catch (NumberFormatException ignored) {};
+                                }
+                            }
+                            
+                            if(level > 0)
+                                KnownVillageManager.getSingleton().addWatchtowerLevel(v, level);
+                        }
+                        break;
+                    }
+                    case ImageManager.CURSOR_REMOVE_WATCHTOWER: {
+                        if (v != null) {
+                            KnownVillageManager.getSingleton().removeWatchtower(v);
                         }
                         break;
                     }
@@ -773,7 +810,8 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
         });
 
         //</editor-fold>
-        // <editor-fold defaultstate="collapsed" desc=" MouseMotionListener for dragging operations ">
+        
+        //< editor-fold defaultstate="collapsed" desc="MouseMotionListener for dragging operations">
         addMouseMotionListener(new MouseMotionListener() {
 
             @Override
@@ -894,7 +932,7 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
             }
         });
 
-        //<editor-fold>
+        //</editor-fold>
     }
 
     public boolean isAttackCursor() {
@@ -1222,12 +1260,7 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
                         Village[] list = v.getTribe().getVillageList();
                         Arrays.sort(list);
                         for (Village current : list) {
-                            if (ServerSettings.getSingleton().getCoordType() != 2) {
-                                int[] hier = DSCalculator.xyToHierarchical((int) current.getX(), (int) current.getY());
-                                builder.append(hier[0]).append(":").append(hier[1]).append(":").append(hier[2]).append("\n");
-                            } else {
-                                builder.append(current.getX()).append("|").append(current.getY()).append("\n");
-                            }
+                            builder.append(current.getX()).append("|").append(current.getY()).append("\n");
                         }
                         Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(builder.toString()), null);
                         JOptionPaneHelper.showInformationBox(this, "Dörfer in die Zwischenablage kopiert", "Information");
@@ -1281,12 +1314,7 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
             if (v != null) {
                 try {
                     StringBuilder builder = new StringBuilder();
-                    if (ServerSettings.getSingleton().getCoordType() != 2) {
-                        int[] hier = DSCalculator.xyToHierarchical((int) v.getX(), (int) v.getY());
-                        builder.append(hier[0]).append(":").append(hier[1]).append(":").append(hier[2]);
-                    } else {
-                        builder.append(v.getX()).append("|").append(v.getY());
-                    }
+                    builder.append(v.getX()).append("|").append(v.getY());
                     Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(builder.toString()), null);
                     JOptionPaneHelper.showInformationBox(this, "Koordinaten in die Zwischenablage kopiert", "Information");
                 } catch (Exception e) {
@@ -1344,7 +1372,7 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
         } else if (evt.getSource() == jCurrentToAStarAsAttacker || evt.getSource() == jCurrentToAStarAsDefender) {
             VillageTroopsHolder own = TroopsManager.getSingleton().getTroopsForVillage(actionMenuVillage, TroopsManager.TROOP_TYPE.OWN);
 
-            Hashtable<String, Double> values = new Hashtable<>();
+            HashMap<String, Double> values = new HashMap<>();
             if (evt.getSource() == jCurrentToAStarAsAttacker && own == null) {
                 JOptionPaneHelper.showInformationBox(this, "Keine Truppeninformationen (Eigene) vorhanden", "Information");
                 return;
@@ -1358,31 +1386,35 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
 
             for (UnitHolder unit : DataHolder.getSingleton().getUnits()) {
                 if (evt.getSource() == jCurrentToAStarAsAttacker) {
-                    values.put("att_" + unit.getPlainName(), (double) own.getTroopsOfUnitInVillage(unit));
+                    values.put("att_" + unit.getPlainName(), (double) own.getTroops().getAmountForUnit(unit));
                 }
                 if (evt.getSource() == jCurrentToAStarAsDefender) {
-                    values.put("def_" + unit.getPlainName(), (double) inVillage.getTroopsOfUnitInVillage(unit));
+                    values.put("def_" + unit.getPlainName(), (double) inVillage.getTroops().getAmountForUnit(unit));
                 }
             }
             if (!GlobalOptions.isOfflineMode()) {
-                if (!DSWorkbenchSimulatorFrame.getSingleton().isVisible()) {
-                    DSWorkbenchSimulatorFrame.getSingleton().setDefaultCloseOperation(javax.swing.WindowConstants.HIDE_ON_CLOSE);
-                    DSWorkbenchSimulatorFrame.getSingleton().showIntegratedVersion(DSWorkbenchSettingsDialog.getSingleton().getWebProxy(), GlobalOptions.getSelectedServer());
+                try {
+                    if (!DSWorkbenchSimulatorFrame.getSingleton().isVisible()) {
+                        DSWorkbenchSimulatorFrame.getSingleton().setDefaultCloseOperation(javax.swing.WindowConstants.HIDE_ON_CLOSE);
+                        DSWorkbenchSimulatorFrame.getSingleton().showIntegratedVersion(DSWorkbenchSettingsDialog.getSingleton().getWebProxy(), GlobalOptions.getSelectedServer());
+                    }
+                    DSWorkbenchSimulatorFrame.getSingleton().toFront();
+                    DSWorkbenchSimulatorFrame.getSingleton().insertValuesExternally(values);
+                } catch(Exception e) {
+                    logger.warn("Problem during writing Troops to AStar", e);
                 }
-                DSWorkbenchSimulatorFrame.getSingleton().toFront();
-                DSWorkbenchSimulatorFrame.getSingleton().insertValuesExternally(values);
             } else {
                 JOptionPaneHelper.showInformationBox(this, "A*Star ist im Offline-Modus leider nicht verfügbar.", "Information");
             }
         } else if (evt.getSource() == jVillageInfoIngame) {
             //center village ingame
             if (actionMenuVillage != null) {
-                BrowserCommandSender.centerVillage(actionMenuVillage);
+                BrowserInterface.centerVillage(actionMenuVillage);
             }
         } else if (evt.getSource() == jVillagePlaceIngame) {
             //open place ingame
             if (actionMenuVillage != null) {
-                BrowserCommandSender.openPlaceTroopsView(actionMenuVillage);
+                BrowserInterface.openPlaceTroopsView(actionMenuVillage);
             }
         } else if (evt.getSource() == jAllCoordToClipboardItem) {
             //copy selected villages coordinates to clipboard
@@ -1393,12 +1425,7 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
             try {
                 StringBuilder builder = new StringBuilder();
                 for (Village v : markedVillages) {
-                    if (ServerSettings.getSingleton().getCoordType() != 2) {
-                        int[] hier = DSCalculator.xyToHierarchical((int) v.getX(), (int) v.getY());
-                        builder.append(hier[0]).append(":").append(hier[1]).append(":").append(hier[2]).append("\n");
-                    } else {
-                        builder.append(v.getX()).append("|").append(v.getY()).append("\n");
-                    }
+                    builder.append(v.getX()).append("|").append(v.getY()).append("\n");
                 }
                 Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(builder.toString()), null);
                 JOptionPaneHelper.showInformationBox(this, "Koordinaten in die Zwischenablage kopiert", "Information");
@@ -1457,7 +1484,7 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
             int cnt = 0;
             for (Village v : markedVillages) {
                 if (v != null) {
-                    BrowserCommandSender.centerVillage(v);
+                    BrowserInterface.centerVillage(v);
                     cnt++;
                 }
                 if (cnt == 10) {
@@ -1808,7 +1835,7 @@ public class MapPanel extends JPanel implements DragGestureListener, // For reco
                 return;
             }
             attackAddFrame.setupAttack(v, target, DataHolder.getSingleton().getUnitID("Ramme"), null);
-        } catch (Exception ex) {
+        } catch (UnsupportedFlavorException | IOException ex) {
             logger.error("Failed to drop villages", ex);
         }
     }

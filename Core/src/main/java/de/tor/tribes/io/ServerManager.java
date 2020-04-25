@@ -15,6 +15,7 @@
  */
 package de.tor.tribes.io;
 
+import de.tor.tribes.dssim.util.ConfigManager;
 import de.tor.tribes.util.Constants;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
@@ -28,7 +29,8 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lorecraft.phparser.SerializedPhpParser;
 
 /**
@@ -36,8 +38,8 @@ import org.lorecraft.phparser.SerializedPhpParser;
  */
 public class ServerManager {
 
-    private static Logger logger = Logger.getLogger("ServerManager");
-    // private static Hashtable<String, URL> SERVER_LIST = null;
+    private static Logger logger = LogManager.getLogger("ServerManager");
+    // private static HashMap<String, URL> SERVER_LIST = null;
     // private static List<DatabaseServerEntry> SERVERS = null;
     private static LinkedHashMap<String, String> SERVERS = null;
 
@@ -50,42 +52,44 @@ public class ServerManager {
             serverDir.mkdir();
         }
     }
-
-    public static void loadServerList(Proxy pProxy) throws Exception {
+    
+    public static void loadServerList(Proxy pProxy) {
         SERVERS = new LinkedHashMap<>();
-        logger.debug("Loading servers for die-staemme.de");
-        LinkedHashMap<String, String> serversDe = loadServerList("https://www.die-staemme.de", pProxy);
-        logger.debug("Loading servers for staemme.ch");
-        LinkedHashMap<String, String> serversCh = loadServerList("https://www.staemme.ch", pProxy);
-        for (String id : serversDe.keySet()) {
-            logger.debug("Adding server with id " + id + " and URL " + serversDe.get(id));
-            SERVERS.put(id, serversDe.get(id));
-        }
-        for (String id : serversCh.keySet()) {
-            logger.debug("Adding server with id " + id + " and URL " + serversCh.get(id));
-            SERVERS.put(id, serversCh.get(id));
-        }
-
-        logger.debug("REading custom servers from servers.txt");
+        logger.debug("Reading servers from servers.txt");
 
         BufferedReader r = null;
         try {
             if (new File("servers.txt").exists()) {
                 r = new BufferedReader(new FileReader("servers.txt"));
-                int cnt = 0;
+                int cnt = 0, regCnt = 0;
                 String line;
                 while ((line = r.readLine()) != null) {
-                    if (!line.startsWith("#")) {//not commented line
+                    if (line.startsWith("#") || line.trim().length() <= 1) {//commented or empty line
+                        continue;
+                    }
+                    if(line.startsWith("\\")) {
+                        //region
+                        logger.debug("Loading servers for " + line.substring(1));
+                        LinkedHashMap<String, String> serversRegion = loadServerList(line.substring(1), pProxy);
+                        regCnt++;
+                        
+                        for (String id : serversRegion.keySet()) {
+                            logger.debug("Adding server with id " + id + " and URL " + serversRegion.get(id));
+                            SERVERS.put(id, serversRegion.get(id));
+                            cnt++;
+                        }
+                    } else {
+                        //single server
                         String[] split = line.split(";");
                         logger.debug("Adding server with id " + split[0] + " and URL " + split[1]);
                         SERVERS.put(split[0], split[1]);
                         cnt++;
                     }
                 }
-                logger.info("Read " + cnt + " external servers");
+                logger.info("Read " + regCnt + " regions and " + cnt + " servers");
             }
         } catch (Throwable e) {
-            logger.warn("Failed to read external servers. Skipping it.");
+            logger.error("Failed to read servers. Skipping it.", e);
         } finally {
             if (r != null) {
                 try {
@@ -107,20 +111,8 @@ public class ServerManager {
         int bytes = 0;
         byte[] data = new byte[1024];
         ByteArrayOutputStream result = new ByteArrayOutputStream();
-        int sum = 0;
-        while (bytes != -1) {
-            if (bytes != -1) {
-                result.write(data, 0, bytes);
-            }
-
-            bytes = isr.read(data);
-            sum += bytes;
-            if (sum % 500 == 0) {
-                try {
-                    Thread.sleep(50);
-                } catch (Exception ignored) {
-                }
-            }
+        while ((bytes = isr.read(data)) != -1) {
+            result.write(data, 0, bytes);
         }
         SerializedPhpParser serializedPhpParser = new SerializedPhpParser(result.toString());
         return (LinkedHashMap<String, String>) serializedPhpParser.parse();
@@ -138,7 +130,7 @@ public class ServerManager {
         }
         return servers.toArray(new String[0]);
     }
-
+    
     public static String[] getServerIDs() {
         String[] servers = SERVERS.keySet().toArray(new String[]{});
         Arrays.sort(servers, String.CASE_INSENSITIVE_ORDER);
@@ -147,5 +139,9 @@ public class ServerManager {
 
     public static String getServerURL(String pServerID) {
         return SERVERS.get(pServerID);
+    }
+    
+    public static void giveSimulatorServerList() {
+        ConfigManager.getSingleton().setServers(SERVERS);
     }
 }

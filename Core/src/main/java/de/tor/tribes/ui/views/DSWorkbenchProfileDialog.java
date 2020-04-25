@@ -17,20 +17,25 @@ package de.tor.tribes.ui.views;
 
 import de.tor.tribes.io.DataHolder;
 import de.tor.tribes.io.ServerManager;
-import de.tor.tribes.types.ext.Tribe;
 import de.tor.tribes.types.UserProfile;
+import de.tor.tribes.types.ext.Tribe;
 import de.tor.tribes.util.GlobalOptions;
 import de.tor.tribes.util.JOptionPaneHelper;
+import de.tor.tribes.util.ProfileManager;
 import java.util.Arrays;
 import java.util.Collection;
 import javax.swing.DefaultComboBoxModel;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  *
  * @author Torridity
  */
 public class DSWorkbenchProfileDialog extends javax.swing.JDialog {
-
+    private static Logger logger = LogManager.getLogger("ProfileDialog");
+    
     private static DSWorkbenchProfileDialog SINGLETON = null;
     private UserProfile currentProfile = null;
 
@@ -47,6 +52,7 @@ public class DSWorkbenchProfileDialog extends javax.swing.JDialog {
     }
 
     public void showModifyDialog(UserProfile pProfile) {
+        jButtonLoadPlayerList.setEnabled(false);
         String server = pProfile.getServerId();
         DefaultComboBoxModel serverModel = new DefaultComboBoxModel(new Object[]{server});
         jAccountServerBox.setModel(serverModel);
@@ -78,20 +84,14 @@ public class DSWorkbenchProfileDialog extends javax.swing.JDialog {
     }
 
     public void showAddProfileDialog() {
+        jButtonLoadPlayerList.setEnabled(true);
         String server = GlobalOptions.getSelectedServer();
-        String[] localServers = ServerManager.getLocalServers();
-        DefaultComboBoxModel serverModel = new DefaultComboBoxModel(localServers);
+        String[] allServers = ServerManager.getServerIDs();
+        DefaultComboBoxModel serverModel = new DefaultComboBoxModel(allServers);
         jAccountServerBox.setModel(serverModel);
         jAccountServerBox.setSelectedItem(server);
         jAccountServerBox.setEnabled(true);
-        Collection<Tribe> tribes = DataHolder.getSingleton().getTribesForServer(server).values();
-        Tribe[] aTribes = tribes.toArray(new Tribe[]{});
-        Arrays.sort(aTribes, Tribe.CASE_INSENSITIVE_ORDER);
-        DefaultComboBoxModel model = new DefaultComboBoxModel();
-        for (Tribe tribe : aTribes) {
-            model.addElement(tribe);
-        }
-        jAccountTribeBox.setModel(model);
+        fireServerChangedEvent(null);
         jDoCreateModifyAccountButton.setText("Erstellen");
         currentProfile = null;
         pack();
@@ -115,6 +115,7 @@ public class DSWorkbenchProfileDialog extends javax.swing.JDialog {
         jIsUvAccount = new javax.swing.JCheckBox();
         jDoCreateModifyAccountButton = new javax.swing.JButton();
         jButton5 = new javax.swing.JButton();
+        jButtonLoadPlayerList = new javax.swing.JButton();
 
         setTitle("Profile");
         setModal(true);
@@ -150,7 +151,7 @@ public class DSWorkbenchProfileDialog extends javax.swing.JDialog {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 1;
-        gridBagConstraints.gridwidth = 3;
+        gridBagConstraints.gridwidth = 4;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
         gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 5);
@@ -169,11 +170,10 @@ public class DSWorkbenchProfileDialog extends javax.swing.JDialog {
         getContentPane().add(jLabel3, gridBagConstraints);
 
         jIsUvAccount.setText("UV-Account");
-        jIsUvAccount.setOpaque(false);
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 2;
-        gridBagConstraints.gridwidth = 3;
+        gridBagConstraints.gridwidth = 4;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
         gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 5);
@@ -188,6 +188,7 @@ public class DSWorkbenchProfileDialog extends javax.swing.JDialog {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 3;
         gridBagConstraints.gridy = 3;
+        gridBagConstraints.gridwidth = 2;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
         gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 5);
         getContentPane().add(jDoCreateModifyAccountButton, gridBagConstraints);
@@ -204,6 +205,17 @@ public class DSWorkbenchProfileDialog extends javax.swing.JDialog {
         gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
         getContentPane().add(jButton5, gridBagConstraints);
 
+        jButtonLoadPlayerList.setText("Laden");
+        jButtonLoadPlayerList.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                FireLoadPlayerList(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 4;
+        gridBagConstraints.gridy = 0;
+        getContentPane().add(jButtonLoadPlayerList, gridBagConstraints);
+
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
@@ -217,13 +229,17 @@ public class DSWorkbenchProfileDialog extends javax.swing.JDialog {
                 if (jIsUvAccount.isSelected()) {
                     uvId = tribe.getId();
                 }
+                
+                if(ProfileManager.getSingleton().getProfile(server, tribe) != null) {
+                    JOptionPaneHelper.showErrorBox(this, "Es existiert schon ein Profil.", "Fehler");
+                    return;
+                }
+                
                 UserProfile newProfile = UserProfile.create(server, tribe.getName(), uvId, true);
                 if (newProfile == null) {
                     JOptionPaneHelper.showErrorBox(this, "Fehler bei der Profilerstellung.", "Fehler");
                     return;
-                } /*else {
-                    GlobalOptions.setSelectedProfile(newProfile);
-                }*/
+                }
             } else {
                 //modify existing profile
                 Tribe tribe = (Tribe) jAccountTribeBox.getSelectedItem();
@@ -248,6 +264,10 @@ public class DSWorkbenchProfileDialog extends javax.swing.JDialog {
 
     private void fireServerChangedEvent(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_fireServerChangedEvent
         String server = (String) jAccountServerBox.getSelectedItem();
+        if(!Arrays.asList(ServerManager.getLocalServers()).contains(server)) {
+            jAccountTribeBox.setModel(new DefaultComboBoxModel(new String[] {"Bitte Laden dr\u00fccken"}));
+            return;
+        }
         Collection<Tribe> tribes = DataHolder.getSingleton().getTribesForServer(server).values();
         Tribe[] aTribes = tribes.toArray(new Tribe[]{});
         Arrays.sort(aTribes, Tribe.CASE_INSENSITIVE_ORDER);
@@ -256,15 +276,55 @@ public class DSWorkbenchProfileDialog extends javax.swing.JDialog {
             model.addElement(tribe);
         }
         jAccountTribeBox.setModel(model);
-
     }//GEN-LAST:event_fireServerChangedEvent
+    
+    private String serverBackup;
+    private void FireLoadPlayerList(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_FireLoadPlayerList
+        serverBackup = GlobalOptions.getProperty("default.server");
+        GlobalOptions.saveUserData();
+        String selectedServer = (String) jAccountServerBox.getSelectedItem();
+        GlobalOptions.addProperty("default.server", selectedServer);
+        GlobalOptions.saveProperties();
 
+        GlobalOptions.setSelectedServer(selectedServer);
+        
+        Thread t = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                setName("PlayerLoadThread");
+                try {
+                    logger.debug("Start loading from server");
+                    jAccountTribeBox.setModel(new DefaultComboBoxModel(new String[] {"Lade...."}));
+                    boolean ret = DataHolder.getSingleton().loadData(true);
+                    logger.debug("Data loaded " + ((ret) ? "successfully" : "with errors"));
+                    FireLoadPlayerFinished();
+                } catch (Exception e) {
+                    logger.error("Failed loading data", e);
+                }
+            }
+        });
+        logger.debug("Starting update thread");
+        t.setDaemon(true);
+        t.start();
+    }//GEN-LAST:event_FireLoadPlayerList
+    
+    private void FireLoadPlayerFinished() {
+        GlobalOptions.addProperty("default.server", serverBackup);
+        logger.debug("Start loading from harddisk");
+        jAccountTribeBox.setModel(new DefaultComboBoxModel(new String[] {"Lade...."}));
+        boolean ret = DataHolder.getSingleton().loadData(false);
+        logger.debug("Data loaded " + ((ret) ? "successfully" : "with errors"));
+        
+        fireServerChangedEvent(null);
+    }
+    
     /**
      * @param args the command line arguments
      */
     public static void main(String args[]) {
         java.awt.EventQueue.invokeLater(new Runnable() {
 
+            @Override
             public void run() {
                 DSWorkbenchProfileDialog.getSingleton().setVisible(true);
             }
@@ -274,6 +334,7 @@ public class DSWorkbenchProfileDialog extends javax.swing.JDialog {
     private javax.swing.JComboBox jAccountServerBox;
     private javax.swing.JComboBox jAccountTribeBox;
     private javax.swing.JButton jButton5;
+    private javax.swing.JButton jButtonLoadPlayerList;
     private javax.swing.JButton jDoCreateModifyAccountButton;
     private javax.swing.JCheckBox jIsUvAccount;
     private javax.swing.JLabel jLabel2;

@@ -15,18 +15,22 @@
  */
 package de.tor.tribes.types;
 
+import de.tor.tribes.io.DataHolder;
+import de.tor.tribes.io.TroopAmountFixed;
 import de.tor.tribes.io.UnitHolder;
 import de.tor.tribes.types.ext.Village;
 import de.tor.tribes.util.troops.TroopsManager;
 import de.tor.tribes.util.troops.VillageTroopsHolder;
-import java.util.Enumeration;
-import java.util.Hashtable;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  *
  * @author Torridity
  */
 public class TroopSplit {
+    private static final Logger logger = LogManager.getLogger("TroopSplit");
 
     private Village mVillage = null;
     private int iSplitCount = 1;
@@ -35,16 +39,14 @@ public class TroopSplit {
         mVillage = pVillage;
     }
 
-    public void update(Hashtable<UnitHolder, Integer> pSplitValues, int pTolerance) {
-        if (pSplitValues.isEmpty()) {
+    public void update(TroopAmountFixed pSplit, int pTolerance) {
+        if (!pSplit.hasUnits()) {
             iSplitCount = 1;
             return;
         }
-        Enumeration<UnitHolder> unitKeys = pSplitValues.keys();
         int maxSplitCount = -1;
-        while (unitKeys.hasMoreElements()) {
-            UnitHolder unitKey = unitKeys.nextElement();
-            Integer splitAmount = pSplitValues.get(unitKey);
+        for (UnitHolder unit: DataHolder.getSingleton().getUnits()) {
+            int splitAmount = pSplit.getAmountForUnit(unit);
             if (splitAmount > 0) {
                 VillageTroopsHolder ownTroops = TroopsManager.getSingleton().getTroopsForVillage(mVillage, TroopsManager.TROOP_TYPE.OWN);
 
@@ -54,7 +56,7 @@ public class TroopSplit {
                     return;
                 }
 
-                int amountInVillage = ownTroops.getTroopsOfUnitInVillage(unitKey);
+                int amountInVillage = ownTroops.getTroops().getAmountForUnit(unit);
                 int split = amountInVillage / splitAmount;
                 int currentSplitCount = split;
                 int rest = amountInVillage - split * splitAmount;

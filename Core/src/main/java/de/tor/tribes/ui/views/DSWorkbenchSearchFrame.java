@@ -21,25 +21,25 @@ import de.tor.tribes.types.ext.Tribe;
 import de.tor.tribes.types.ext.Village;
 import de.tor.tribes.ui.windows.DSWorkbenchMainFrame;
 import de.tor.tribes.ui.windows.MarkerAddFrame;
-import de.tor.tribes.util.BrowserCommandSender;
+import de.tor.tribes.util.BrowserInterface;
 import de.tor.tribes.util.Constants;
 import de.tor.tribes.util.GlobalOptions;
 import java.awt.Desktop;
 import java.awt.event.ItemEvent;
 import java.util.Arrays;
-import java.util.Enumeration;
 import java.util.LinkedList;
 import java.util.List;
 import javax.swing.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import org.apache.log4j.Logger;
 
 /**
  * @author Torridity
  */
 public class DSWorkbenchSearchFrame extends javax.swing.JFrame implements SearchListener {
     
-    private static Logger logger = Logger.getLogger("Search");
+    private static Logger logger = LogManager.getLogger("Search");
     private String sLastPlayerValue = null;
     private SearchThread mSearchThread = null;
     private static DSWorkbenchSearchFrame SINGLETON = null;
@@ -61,12 +61,8 @@ public class DSWorkbenchSearchFrame extends javax.swing.JFrame implements Search
         jCenterInGameButton.setIcon(new ImageIcon("./graphics/icons/center.png"));
         jSendResButton.setIcon(new ImageIcon("./graphics/icons/booty.png"));
         jSendDefButton.setIcon(new ImageIcon("./graphics/icons/def.png"));
-        try {
-            jSearchFrameAlwaysOnTop.setSelected(Boolean.parseBoolean(GlobalOptions.getProperty("search.frame.alwaysOnTop")));
-            setAlwaysOnTop(jSearchFrameAlwaysOnTop.isSelected());
-        } catch (Exception e) {
-            //setting not available
-        }
+        jSearchFrameAlwaysOnTop.setSelected(GlobalOptions.getProperties().getBoolean("search.frame.alwaysOnTop"));
+        setAlwaysOnTop(jSearchFrameAlwaysOnTop.isSelected());
 
         //check desktop support
         if (!Desktop.isDesktopSupported()) {
@@ -421,7 +417,7 @@ private void fireCenterMapInGameEvent(java.awt.event.MouseEvent evt) {//GEN-FIRS
     }
     Village v = (Village) jVillageList.getSelectedItem();
     if (v != null) {
-        BrowserCommandSender.centerVillage(v);
+        BrowserInterface.centerVillage(v);
     }
 }//GEN-LAST:event_fireCenterMapInGameEvent
     
@@ -432,7 +428,7 @@ private void fireSendDefEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_
     Village target = (Village) jVillageList.getSelectedItem();
     Village source = DSWorkbenchMainFrame.getSingleton().getCurrentUserVillage();
     if ((source != null) && (target != null)) {
-        BrowserCommandSender.sendTroops(source, target);
+        BrowserInterface.sendTroops(source, target);
     }
 }//GEN-LAST:event_fireSendDefEvent
     
@@ -443,7 +439,7 @@ private void fireSendResEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_
     Village target = (Village) jVillageList.getSelectedItem();
     Village source = DSWorkbenchMainFrame.getSingleton().getCurrentUserVillage();
     if ((source != null) && (target != null)) {
-        BrowserCommandSender.sendRes(source, target);
+        BrowserInterface.sendRes(source, target);
     }
 }//GEN-LAST:event_fireSendResEvent
     
@@ -451,15 +447,6 @@ private void fireSearchFrameAlwaysOnTopEvent(javax.swing.event.ChangeEvent evt) 
     setAlwaysOnTop(!isAlwaysOnTop());
 }//GEN-LAST:event_fireSearchFrameAlwaysOnTopEvent
     
-    public static void main(String[] args) {
-        try {
-            //  UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            UIManager.setLookAndFeel("com.sun.java.swing.plaf.nimbus.NimbusLookAndFeel");
-        } catch (Exception ignored) {
-        }
-        DSWorkbenchSearchFrame.getSingleton().setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        DSWorkbenchSearchFrame.getSingleton().setVisible(true);
-    }
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.ButtonGroup buttonGroup1;
     private javax.swing.JLabel jAlliesLabel;
@@ -551,9 +538,7 @@ class SearchThread extends Thread {
                 if (sSearchTerm.length() >= 1) {
                     List<Tribe> tribeList = new LinkedList<>();
                     List<Ally> allyList = new LinkedList<>();
-                    Enumeration<Integer> tribes = DataHolder.getSingleton().getTribes().keys();
-                    while (tribes.hasMoreElements()) {
-                        Tribe t = DataHolder.getSingleton().getTribes().get(tribes.nextElement());
+                    for(Tribe t: DataHolder.getSingleton().getTribes().values()) {
                         if (t.getName().toLowerCase().contains(sSearchTerm.toLowerCase())) {
                             if (!tribeList.contains(t)) {
                                 tribeList.add(t);

@@ -16,7 +16,6 @@
 package de.tor.tribes.util.bb;
 
 import de.tor.tribes.types.TribeStatResult;
-
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
@@ -27,7 +26,7 @@ import java.util.List;
 public class TribeReportStatsFormatter extends BasicFormatter<TribeStatResult> {
 
     private static final String[] VARIABLES = new String[] {LIST_START, LIST_END, ELEMENT_COUNT, ELEMENT_ID};
-    private static final String STANDARD_TEMPLATE = new TribeStatResult().getStandardTemplate();
+    public static final String STANDARD_TEMPLATE = new TribeStatResult().getStandardTemplate();
     private static final String TEMPLATE_PROPERTY = "tribe.report.stats.bbexport.template";
 
     @Override

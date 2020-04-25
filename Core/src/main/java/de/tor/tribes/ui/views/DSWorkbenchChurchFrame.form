@@ -106,7 +106,6 @@
     <Component class="javax.swing.JCheckBox" name="jChurchFrameAlwaysOnTop">
       <Properties>
         <Property name="text" type="java.lang.String" value="Immer im Vordergrund"/>
-        <Property name="opaque" type="boolean" value="false"/>
       </Properties>
       <Events>
         <EventHandler event="stateChanged" listener="javax.swing.event.ChangeListener" parameters="javax.swing.event.ChangeEvent" handler="fireChurchFrameOnTopEvent"/>

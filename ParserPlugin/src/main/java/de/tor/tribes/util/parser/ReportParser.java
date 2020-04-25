@@ -16,35 +16,33 @@
 package de.tor.tribes.util.parser;
 
 import de.tor.tribes.io.DataHolder;
+import de.tor.tribes.io.TroopAmountFixed;
 import de.tor.tribes.io.UnitHolder;
 import de.tor.tribes.types.FightReport;
 import de.tor.tribes.types.ext.Tribe;
 import de.tor.tribes.types.ext.Village;
 import de.tor.tribes.ui.windows.DSWorkbenchMainFrame;
 import de.tor.tribes.ui.windows.NotifierFrame;
-import de.tor.tribes.util.GlobalOptions;
-import de.tor.tribes.util.ProfileManager;
+import de.tor.tribes.util.BuildingSettings;
 import de.tor.tribes.util.ServerSettings;
-import de.tor.tribes.util.church.ChurchManager;
 import de.tor.tribes.util.SilentParserInterface;
 import de.tor.tribes.util.report.ReportManager;
-import java.awt.Toolkit;
-import java.awt.datatransfer.DataFlavor;
-import java.awt.datatransfer.Transferable;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Hashtable;
+import java.util.List;
 import java.util.StringTokenizer;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * @author Torridity
+ * @author extremeCrazyCoder
  */
 public class ReportParser implements SilentParserInterface {
+    //TODO rework this Code
+    private static Logger logger = LogManager.getLogger("ReportParser");
 
-    private static Logger logger = Logger.getLogger("ReportParser");
-
+    @Override
     public boolean parse(String pData) {
         try {
             FightReport r = parseReport(pData);
@@ -52,6 +50,7 @@ public class ReportParser implements SilentParserInterface {
             if (!r.isValid()) {
                 throw new Exception("No valid report data found");
             }
+            r.fillMissingSpyInformation();
             ReportManager.getSingleton().addManagedElement(r);
             try {
                 DSWorkbenchMainFrame.getSingleton().showSuccess("DS Workbench hat einen Kampfbericht erfolgreich eingelesen und in das Berichtset 'default' übertragen.");
@@ -66,13 +65,7 @@ public class ReportParser implements SilentParserInterface {
         return false;
     }
 
-    private static void debug(String pMessage) {
-        if (logger.isDebugEnabled()) {
-            logger.debug(pMessage);
-        }
-    }
-
-    private static FightReport parseReport(String pData) {
+    private FightReport parseReport(String pData) {
         StringTokenizer t = new StringTokenizer(pData, "\n");
         boolean luckPart = false;
         boolean attackerPart = false;
@@ -87,304 +80,255 @@ public class ReportParser implements SilentParserInterface {
         String winString = null;
         while (t.hasMoreTokens()) {
             String line = t.nextToken().trim();
-            debug("Line: " + line);
-            if (line.startsWith("Kampfzeit")) {
-                debug("Found send line");
-                line = line.replaceAll("Kampfzeit", "").trim();
-                SimpleDateFormat f = new SimpleDateFormat("dd.MM.yy HH:mm:ss");
+            logger.debug("Line: " + line);
+            
+            if (line.startsWith(getVariable("report.fight.time"))) {
+                logger.debug("Found send line");
+                line = line.replaceAll(getVariable("report.fight.time"), "").trim();
+                SimpleDateFormat f = new SimpleDateFormat(getVariable("report.date.format"));
                 try {
                     Date d = f.parse(line);
                     result.setTimestamp(d.getTime());
-                    debug("  Sent: " + f.format(new Date(result.getTimestamp())));
+                    logger.debug("  Sent: " + f.format(new Date(result.getTimestamp())));
                     haveTime = true;
+                    continue;
                 } catch (Exception e) {
                     result.setTimestamp(0L);
-                    debug(" Failed to parse sent");
+                    logger.debug(" Failed to parse sent");
                 }
-            } else if (line.contains("hat gewonnen")) {
-                debug("Found 'won' line: " + line);
+            }
+            
+            if (line.contains(getVariable("report.has.won"))) {
+                logger.debug("Found 'won' line: " + line);
                 winString = line;
-            } else if (line.startsWith("ausgekundschaftet")) {
-                debug("Found 'spied' line: " + line);
+                continue;
+            }
+            
+            if (line.contains(getVariable("report.spy"))) {
+                logger.debug("Found 'spied' line: " + line);
                 winString = line;
-            } else if (line.startsWith("Angreiferglück")) {
-                debug("Found luck line");
-                line = line.replaceAll("Angreiferglück", "").trim();
-                if (line.indexOf("%") > 0) {
-                    //negative luck is in same line, try it!
-                    try {
-                        double luck = Double.parseDouble(line.replaceAll("Glück", "").replaceAll("%", "").trim());
-                        result.setLuck(luck);
-                        debug(" Luck: " + luck);
-                    } catch (Exception e) {
-                        //e.printStackTrace();
-                        result.setLuck(0.0);
-                        debug(" Failed to parse luck");
-                    }
-                    luckPart = false;
-                } else {
-                    //probably positive luck, handle with next line
-                    luckPart = true;
-                }
-            } else if (line.startsWith("Angreiferglück")) {
-                debug("Found luck part");
+                continue;
+            }
+            
+            if (line.startsWith(getVariable("report.att.luck"))) {
+                logger.debug("Found luck line");
                 luckPart = true;
-            } else if (line.startsWith("Moral")) {
-                debug("Found moral line");
-                line = line.replaceAll("Moral:", "").trim().replaceAll("%", "");
-                if (line.contains("Angreifer")) {
+                continue;
+            }
+            
+            if (line.startsWith(getVariable("report.moral"))) {
+                logger.debug("Found moral line");
+                line = line.replaceAll(getVariable("report.moral") + ":", "").trim().replaceAll("%", "");
+                if (line.contains(getVariable("report.att.player"))) {
                     //Opera only -.-
-                    debug(" Special moral handling (Opera)");
+                    logger.debug(" Special moral handling (Opera)");
                     attackerPart = true;
-                    int attackerPos = line.indexOf("Angreifer");
-                    String attacker = line.substring(attackerPos).replaceAll("Angreifer:", "").trim();
-                    debug(" Found attacker: " + attacker);
+                    int attackerPos = line.indexOf(getVariable("report.att.player"));
+                    String attacker = line.substring(attackerPos).replaceAll(getVariable("report.att.player") + ":", "").trim();
+                    logger.debug(" Found attacker: " + attacker);
                     result.setAttacker(DataHolder.getSingleton().getTribeByName(attacker));
                     line = line.substring(0, attackerPos);
                 }
                 try {
                     double moral = Double.parseDouble(line);
-                    debug(" Set moral to " + moral);
+                    logger.debug(" Set moral to " + moral);
                     result.setMoral(moral);
                 } catch (Exception ignored) {
                 }
-            } else if (line.startsWith("Angreifer") || line.contains("Angreifer")) {
+                continue;
+            }
+            
+            if (line.contains(getVariable("report.att.player"))) {
                 attackerPart = true;
-                line = line.replaceAll("Angreifer:", "").trim();
-                debug("Found attacker in normal mode: " + line);
+                line = line.replaceAll(getVariable("report.att.player") + ":", "").trim();
+                logger.debug("Found attacker in normal mode: " + line);
                 result.setAttacker(DataHolder.getSingleton().getTribeByName(line));
-            } else if (line.startsWith("Dorf") || line.startsWith("Herkunft") || line.startsWith("Ziel")) {
-                line = line.replaceAll("Dorf:", "").replaceAll("Herkunft:", "").replaceAll("Ziel:", "").trim();
-                debug("Found village: " + line);
+                continue;
+            }
+            
+            if (line.startsWith(getVariable("report.village.1")) ||
+                    line.startsWith(getVariable("report.village.2")) ||
+                    line.startsWith(getVariable("report.village.3"))) {
+                line = line.replaceAll(getVariable("report.village.1") + ":", "");
+                line = line.replaceAll(getVariable("report.village.2") + ":", "");
+                line = line.replaceAll(getVariable("report.village.3") + ":", "").trim();
+                logger.debug("Found village: " + line);
                 if (attackerPart) {
-                    debug(" Use village as source");
-                    result.setSourceVillage(new VillageParser().parse(line).get(0));
+                    logger.debug(" Use village as source");
+                    result.setSourceVillage(VillageParser.parseSingleLine(line));
                 } else if (defenderPart) {
-                    debug(" Use village as target");
-                    result.setTargetVillage(new VillageParser().parse(line).get(0));
+                    logger.debug(" Use village as target");
+                    result.setTargetVillage(VillageParser.parseSingleLine(line));
                 }
-            } else if (line.startsWith("Anzahl")) {
-                line = line.replaceAll("Anzahl:", "").trim();
-                debug("Found amount line: '" + line + "'");
+                continue;
+            }
+            
+            if (line.startsWith(getVariable("report.num"))) {
+                line = line.replaceAll(getVariable("report.num") + ":", "").trim();
+                logger.debug("Found amount line: '" + line + "'");
                 if (attackerPart) {
-                    debug(" Use amount for attacker");
+                    logger.debug(" Use amount for attacker");
                     String[] troops = line.split("\t");
                     //hack for militia servers (militia is not shown for attacker)
                     if (troops.length == serverTroopCount || troops.length == serverTroopCount - 1) {
                         result.setAttackers(parseUnits(troops));
                     }
                 } else if (defenderPart) {
-                    debug(" Use amount for defender");
+                    logger.debug(" Use amount for defender");
                     String[] troops = line.split("\t");
                     if (troops.length == serverTroopCount) {
                         result.setDefenders(parseUnits(troops));
                     }
                 }
-            } else if (line.startsWith("Verluste")) {
-                line = line.replaceAll("Verluste:", "").trim();
-                debug("Found losses line: '" + line + "'");
+                continue;
+            }
+            
+            if (line.startsWith(getVariable("report.loss"))) {
+                line = line.replaceAll(getVariable("report.loss") + ":", "").trim();
+                logger.debug("Found losses line: '" + line + "'");
                 if (attackerPart) {
-                    debug(" Use losses for attacker");
+                    logger.debug(" Use losses for attacker");
                     String[] troops = line.split("\t");
                     if (troops.length == serverTroopCount || troops.length == serverTroopCount - 1) {
                         //hack for militia servers (militia is not shown for attacker)
-                        debug(" Line seems valid");
+                        logger.debug(" Line seems valid");
                         result.setDiedAttackers(parseUnits(troops));
                         attackerPart = false;
                     } else {
-                        debug(" Line seems NOT valid (" + troops.length + " != " + serverTroopCount + ")");
+                        logger.debug(" Line seems NOT valid (" + troops.length + " != " + serverTroopCount + ")");
                     }
                 } else if (defenderPart) {
-                    debug(" Use losses for defender");
+                    logger.debug(" Use losses for defender");
                     String[] troops = line.split("\t");
                     if (troops.length == serverTroopCount) {
-                        debug(" Line seems valid");
+                        logger.debug(" Line seems valid");
                         result.setDiedDefenders(parseUnits(troops));
                     } else {
-                        debug(" Line seems NOT valid (" + troops.length + " != " + serverTroopCount + ")");
+                        logger.debug(" Line seems NOT valid (" + troops.length + " != " + serverTroopCount + ")");
                     }
 
                 }
-            } else if (line.startsWith("Verteidiger")) {
+                continue;
+            }
+            
+            if (line.startsWith(getVariable("report.defender.player"))) {
                 defenderPart = true;
-                line = line.replaceAll("Verteidiger:", "").trim();
-                debug("Found defender line: '" + line + "'");
+                line = line.replaceAll(getVariable("report.defender.player") + ":", "").trim();
+                logger.debug("Found defender line: '" + line + "'");
                 result.setDefender(DataHolder.getSingleton().getTribeByName(line));
-            } else if (line.contains("Erspähte Rohstoffe:")) {
-                debug("Found spyed resources");
-                String resources = line.substring(line.lastIndexOf(":") + 1).trim();
+                continue;
+            }
+            
+            if (line.contains(getVariable("report.spy.res"))) {
+                logger.debug("Found spyed resources");
+                String resources = line.replaceAll(getVariable("report.spy.res") + ":", "").trim();
                 String[] spyedResources = resources.split(" ");
+                //TODO handle only one or two resources (zero resources aren't displayed
                 try {
                     int wood = Integer.parseInt(spyedResources[0].replaceAll("\\.", ""));
                     int clay = Integer.parseInt(spyedResources[1].replaceAll("\\.", ""));
                     int iron = Integer.parseInt(spyedResources[2].replaceAll("\\.", ""));
                     result.setSpyedResources(wood, clay, iron);
-                    debug("Successfully set spyed resources to " + wood + "/" + clay + "/" + iron);
+                    logger.debug("Successfully set spyed resources to " + wood + "/" + clay + "/" + iron);
                 } catch (Exception e) {
-                    debug("Failed to set spyed resources from " + resources);
+                    logger.debug("Failed to set spyed resources from " + resources);
                     //no spyed resources
                 }
-            } else if (line.contains("Beute:")) {
-                debug("Found haul");
-                String haul = line.substring(line.lastIndexOf(":") + 1).trim();
+                continue;
+            }
+            
+            if (line.contains(getVariable("report.haul"))) {
+                logger.debug("Found haul");
+                String haul = line.replaceAll(getVariable("report.haul") + ":", "").trim();
                 String[] hauledResource = haul.split(" ");
                 try {
                     int wood = 0;
                     int clay = 0;
                     int iron = 0;
-                    for (int i = 0; i < hauledResource.length; i++) {
-                        if (i == 0) {
-                            try {
-                                wood = Integer.parseInt(hauledResource[0].replaceAll("\\.", ""));
-                            } catch (NumberFormatException nfe) {
-                                break;
-                            }
-                        } else if (i == 1) {
-                            try {
-                                clay = Integer.parseInt(hauledResource[1].replaceAll("\\.", ""));
-                            } catch (NumberFormatException nfe) {
-                                break;
-                            }
-                        } else if (i == 2) {
-                            try {
-                                iron = Integer.parseInt(hauledResource[2].replaceAll("\\.", ""));
-                            } catch (NumberFormatException nfe) {
-                                break;
-                            }
-                        }
+                    try {
+                        wood = Integer.parseInt(hauledResource[0].replaceAll("\\.", ""));
+                        clay = Integer.parseInt(hauledResource[1].replaceAll("\\.", ""));
+                        iron = Integer.parseInt(hauledResource[2].replaceAll("\\.", ""));
+                    } catch (NumberFormatException ignored) {
                     }
                     result.setHaul(wood, clay, iron);
-                    debug("Successfully set haul to " + wood + "/" + clay + "/" + iron);
+                    logger.debug("Successfully set haul to " + wood + "/" + clay + "/" + iron);
+                    continue;
                 } catch (Exception e) {
-                    debug("Failed to set haul from " + haul);
+                    logger.debug("Failed to set haul from " + haul);
                     //no haul
                 }
-            } else if (line.contains("Holzfäller")) {
-                debug("Parse wood mine");
-                //int val = parseIntFromPattern(line, "Holzfäller(.*)\\(Stufe(.*?)\\)", 2);
-                int val = parseIntFromPattern(line, "Holzfäller(.*)(.*?)", 2);
-                if (val != -1) {
-                    debug("Got wood mine level " + val);
-                    result.setWoodLevel(val);
-                } else {
-                    debug("No valid wood mine level from " + line);
+            }
+
+            for(int i = 0; i < BuildingSettings.BUILDING_NAMES.length; i++) {
+                if (line.contains(getVariable("report.buildings." + BuildingSettings.BUILDING_NAMES[i]))) {
+                    logger.debug("Parse " + BuildingSettings.BUILDING_NAMES[i]);
+                    int val = parseIntFromReportTable(line, getVariable(
+                            "report.buildings." + BuildingSettings.BUILDING_NAMES[i]));
+                    if (val != -1) {
+                        logger.debug("Got " + BuildingSettings.BUILDING_NAMES[i] + " level " + val);
+                        result.setBuilding(i, val);
+                        break;
+                    } else {
+                        logger.debug("No valid " + BuildingSettings.BUILDING_NAMES[i] + " level from " + line);
+                    }
                 }
-            } else if (line.contains("Lehmgrube")) {
-                debug("Parse clay mine");
-                //int val = parseIntFromPattern(line, "Lehmgrube(.*)\\(Stufe(.*?)\\)", 2);
-                int val = parseIntFromPattern(line, "Lehmgrube(.*)(.*?)", 2);
-                if (val != -1) {
-                    debug("Got clay mine level " + val);
-                    result.setClayLevel(val);
-                } else {
-                    debug("No valid clay mine level from " + line);
-                }
-            } else if (line.contains("Eisenmine")) {
-                debug("Parse clay mine");
-                // int val = parseIntFromPattern(line, "Eisenmine(.*)\\(Stufe(.*?)\\)", 2);
-                int val = parseIntFromPattern(line, "Eisenmine(.*)(.*?)", 2);
-                if (val != -1) {
-                    debug("Got iron mine level " + val);
-                    result.setIronLevel(val);
-                } else {
-                    debug("No valid iron mine level from " + line);
-                }
-            } else if (line.contains("Speicher")) {
-                debug("Parse storage");
-                // int val = parseIntFromPattern(line, "Speicher(.*)\\(Stufe(.*?)\\)", 2);
-                int val = parseIntFromPattern(line, "Speicher(.*)(.*?)", 2);
-                if (val != -1) {
-                    debug("Got storage level " + val);
-                    result.setStorageLevel(val);
-                } else {
-                    debug("No valid storage level from " + line);
-                }
-            } else if (line.contains("Versteck")) {
-                debug("Parse hide");
-                //int val = parseIntFromPattern(line, "Versteck(.*)\\(Stufe(.*?)\\)", 2);
-                int val = parseIntFromPattern(line, "Versteck(.*)(.*?)", 2);
-                if (val != -1) {
-                    debug("Got hide level " + val);
-                    result.setHideLevel(val);
-                } else {
-                    debug("No valid hide level from " + line);
-                }
-            } else if (line.contains("Wall")) {
-                debug("Parse wall");
-                //int val = parseIntFromPattern(line, "Wall(.*)\\(Stufe(.*?)\\)", 2);
-                int val = parseIntFromPattern(line, "Wall(.*)(.*?)", 2);
-                if (val != -1) {
-                    debug("Got wall level " + val);
-                    result.setWallLevel(val);
-                } else {
-                    debug("No valid wall level from " + line);
-                }
-            } else if (searchChurch && line.contains("Erste Kirche")) {
-                debug("Try adding first church");
+            }
+            
+            if (searchChurch && line.contains(getVariable("report.buildings.first.church"))) {
+                logger.debug("Try adding first church");
                 try {
-                    ChurchManager.getSingleton().addChurch(result.getTargetVillage(), 6);
+                    result.setBuilding(BuildingSettings.getBuildingIdByName("church"), 2);
+                    continue;
                 } catch (Exception e) {
-                    debug("Failed to add first church");
+                    logger.debug("Failed to add first church");
                 }
-            } else if (searchChurch && line.contains("Kirche")) {
-                debug("Parse church");
-                //int val = parseIntFromPattern(line, "Kirche(.*)\\(Stufe(.*?)\\)", 2);
-                int val = parseIntFromPattern(line, "Kirche(.*)(.*?)", 2);
-                switch (val) {
-                    case 1:
-                        ChurchManager.getSingleton().addChurch(result.getTargetVillage(), 4);
-                        debug("Church level 1 added");
-                        break;
-                    case 2:
-                        ChurchManager.getSingleton().addChurch(result.getTargetVillage(), 6);
-                        debug("Church level 2 added");
-                        break;
-                    case 3:
-                        ChurchManager.getSingleton().addChurch(result.getTargetVillage(), 8);
-                        debug("Church level 3 added");
-                        break;
-                    default:
-                        debug("Failed to add curch");
-                }
-            } else if (line.startsWith("Schaden durch Rammböcke")) {
-                line = line.replaceAll("Schaden durch Rammböcke:", "").trim();
-                line = line.replaceAll("Wall beschädigt von Level", "").trim().replaceAll("auf Level", "");
-                debug("Found wall line");
+            }
+            
+            if (line.startsWith(getVariable("report.damage.ram"))) {
+                line = line.replaceAll(getVariable("report.damage.ram") + ":", "")
+                        .replaceAll(getVariable("report.damage.wall"), "")
+                        .replaceAll(getVariable("report.damage.to"), "").trim();
+                logger.debug("Found wall line");
                 StringTokenizer wallT = new StringTokenizer(line, " \t");
                 try {
                     result.setWallBefore(Byte.parseByte(wallT.nextToken()));
                     result.setWallAfter(Byte.parseByte(wallT.nextToken()));
+                    continue;
                 } catch (Exception e) {
                     result.setWallBefore((byte) -1);
                     result.setWallAfter((byte) -1);
                 }
-            } else if (line.startsWith("Schaden durch Katapultbeschuss")) {
+            }
+            
+            if (line.startsWith(getVariable("report.damage.kata"))) {
                 //Schaden durch Katapultbeschuss: Wall beschädigt von Level 8 auf Level 7
-                line = line.replaceAll("Schaden durch Katapultbeschuss:", "").trim().replaceAll("Level", "");
-                debug("Found cata line");
+                line = line.replaceAll(getVariable("report.damage.kata") + ":", "")
+                        .replaceAll(getVariable("report.damage.level"), "")
+                        .replaceAll(getVariable("report.damage.to"), "").trim();
+                logger.debug("Found cata line");
                 //Wall beschädigt von 8 auf 7
                 StringTokenizer cataT = new StringTokenizer(line, " ");
-                String target = cataT.nextToken();
-                //"damaged" token
-                cataT.nextToken();
-                //"from" token
-                cataT.nextToken();
+                String target = cataT.nextToken().trim();
                 try {
                     byte buildingBefore = Byte.parseByte(cataT.nextToken());
-                    //"to" token
-                    cataT.nextToken();
                     byte buildingAfter = Byte.parseByte(cataT.nextToken());
-                    result.setAimedBuilding(target);
-                    result.setBuildingBefore(buildingBefore);
-                    result.setBuildingAfter(buildingAfter);
+                    if(getBuildingId(target) != -1) {
+                        result.setAimedBuildingId(getBuildingId(target));
+                        result.setBuildingBefore(buildingBefore);
+                        result.setBuildingAfter(buildingAfter);
+                    }
+                    continue;
                 } catch (Exception ignored) {
                 }
-            } else if (line.startsWith("Veränderung der Zustimmung") || line.startsWith("Zustimmung:")) {
-                line = line.replaceAll("Veränderung der Zustimmung", "").trim().replaceAll("Zustimmung gesunken von", "").replaceAll("auf", "");
-                debug("Found acceptance line");
+            }
+            
+            if (line.startsWith(getVariable("report.acceptance.1"))) {
+                line = line.replaceAll(getVariable("report.acceptance.1") + ":", "").trim()
+                        .replaceAll(getVariable("report.acceptance.2"), "")
+                        .replaceAll(getVariable("report.acceptance.3"), "");
+                logger.debug("Found acceptance line");
 
-                //version 6.0
-                line = line.replaceAll("Zustimmung:", "").replaceAll("Gesunken von", "");
                 StringTokenizer acceptT = new StringTokenizer(line, " \t");
                 try {
                     result.setAcceptanceBefore(Byte.parseByte(acceptT.nextToken()));
@@ -393,13 +337,22 @@ public class ReportParser implements SilentParserInterface {
                     result.setAcceptanceBefore((byte) 100);
                     result.setAcceptanceAfter((byte) 100);
                 }
-            } else if (line.startsWith("Truppen des Verteidigers, die unterwegs waren")) {
+                continue;
+            }
+            
+            if (line.startsWith(getVariable("report.ontheway"))) {
                 troopsOnTheWayPart = true;
-                debug("Found troops on the way line");
-            } else if (line.startsWith("Truppen des Verteidigers in anderen Dörfern")) {
+                logger.debug("Found troops on the way line");
+                continue;
+            }
+            
+            if (line.startsWith(getVariable("report.outside"))) {
                 troopsOutside = true;
-                debug("Found troops outside line");
-            } else if (line.startsWith("Durch Besitzer des Berichts verborgen")) {
+                logger.debug("Found troops outside line");
+                continue;
+            }
+            
+            if (line.startsWith(getVariable("report.hidden"))) {
                 if (attackerPart) {
                     String[] unknownAttackers = new String[serverTroopCount];
                     for (int i = 0; i < serverTroopCount; i++) {
@@ -417,8 +370,11 @@ public class ReportParser implements SilentParserInterface {
                     result.setDiedDefenders(parseUnits(unknownDefender));
                     defenderPart = false;
                 }
-            } else if (line.startsWith("Keiner deiner Kämpfer ist lebend zurückgekehrt")) {
-                debug("Found full destruction line");
+                continue;
+            }
+            
+            if (line.startsWith(getVariable("report.full.destruction"))) {
+                logger.debug("Found full destruction line");
                 defenderPart = false;
                 String[] unknownDefender = new String[serverTroopCount];
                 for (int i = 0; i < serverTroopCount; i++) {
@@ -426,52 +382,62 @@ public class ReportParser implements SilentParserInterface {
                 }
                 result.setDefenders(parseUnits(unknownDefender));
                 result.setDiedDefenders(parseUnits(unknownDefender));
-            } else {
-                if (!haveTime) {
-                    debug("Parse sent date");
-                    line = line.trim();
-                    SimpleDateFormat f = new SimpleDateFormat("dd.MM.yy HH:mm:ss");
-                    try {
-                        Date d = f.parse(line);
-                        result.setTimestamp(d.getTime());
-                        haveTime = true;
-                    } catch (Exception e) {
-                        result.setTimestamp(0L);
-                    }
+                continue;
+            }
+            
+            if (!haveTime) {
+                logger.debug("Parse sent date");
+                line = line.trim();
+                SimpleDateFormat f = new SimpleDateFormat(getVariable("report.date.format"));
+                try {
+                    Date d = f.parse(line);
+                    result.setTimestamp(d.getTime());
+                    logger.debug("  Sent: " + f.format(new Date(result.getTimestamp())));
+                    haveTime = true;
+                    continue;
+                } catch (Exception e) {
+                    result.setTimestamp(0L);
                 }
+            }
 
-                if (troopsOnTheWayPart) {
+            if (troopsOnTheWayPart) {
+                String[] troops = line.split("\t");
+                if (troops.length == serverTroopCount) {
+                    troopsOnTheWayPart = false;
+                    result.setDefendersOnTheWay(parseUnits(troops));
+                }
+            }
+            
+            if (troopsOutside) {
+                try {
+                    Village v = VillageParser.parseSingleLine(line);
+                    if (v == null) {
+                        throw new Exception();
+                    }
+                    line = line.substring(line.indexOf("\t")).trim();
                     String[] troops = line.split("\t");
                     if (troops.length == serverTroopCount) {
-                        troopsOnTheWayPart = false;
-                        result.setDefendersOnTheWay(parseUnits(troops));
+                        result.addDefendersOutside(v, parseUnits(troops));
                     }
-                } else if (troopsOutside) {
+                } catch (Exception e) {
+                    //no additional troops outside
+                    troopsOutside = false;
+                }
+            }
+            
+            if (luckPart) {
+                if (line.indexOf("%") > 0) {
+                    luckPart = false;
                     try {
-                        Village v = new VillageParser().parse(line).get(0);
-                        if (v == null) {
-                            throw new Exception();
-                        }
-                        line = line.substring(line.indexOf("\t")).trim();
-                        String[] troops = line.split("\t");
-                        if (troops.length == serverTroopCount) {
-                            result.addDefendersOutside(v, parseUnits(troops));
-                        }
+                        // System.out.println("LuckLine " + line);
+                        double luck = Double.parseDouble(line
+                                .replaceAll(getVariable("report.badluck"), "")
+                                .replaceAll(getVariable("report.luck"), "")
+                                .replaceAll("%", "").trim());
+                        //System.out.println("L " + luck);
+                        result.setLuck(luck);
                     } catch (Exception e) {
-                        //no additional troops outside
-                        troopsOutside = false;
-                    }
-                } else if (luckPart) {
-                    if (line.indexOf("%") > 0) {
-                        luckPart = false;
-                        try {
-                            // System.out.println("LuckLine " + line);
-                            double luck = Double.parseDouble(line.replaceAll("Pech", "").replaceAll("%", "").trim());
-                            //System.out.println("L " + luck);
-                            result.setLuck(luck);
-                        } catch (Exception e) {
-                            result.setLuck(0.0);
-                        }
+                        result.setLuck(0.0);
                     }
                 }
             }
@@ -479,62 +445,52 @@ public class ReportParser implements SilentParserInterface {
         Tribe attacker = result.getAttacker();
         Tribe defender = result.getDefender();
         if (winString == null) {
-            debug("No winString found. Leaving isWon as it is.");
+            logger.debug("No winString found. Leaving isWon as it is.");
         } else {
             if (attacker != null && defender != null) {
-                if (winString.contains("gewonnen")) {
+                if (winString.contains(getVariable("report.win.win"))) {
                     result.setWon(winString.contains(attacker.getName()));
-                    debug("'won' set to " + result.isWon() + " due to winString " + winString + " and attacker " + attacker.getName());
-                } else if (winString.contains("ausgekundschaftet")) {
+                    logger.debug("'won' set to " + result.isWon() + " due to winString " + winString + " and attacker " + attacker.getName());
+                } else if (winString.contains(getVariable("report.spy"))) {
                     result.setWon(winString.indexOf(attacker.getName()) < winString.indexOf(defender.getName()));
-                    debug("'won' set to " + result.isWon() + " due to winString " + winString + " and attacker " + attacker.getName());
+                    logger.debug("'won' set to " + result.isWon() + " due to winString " + winString + " and attacker " + attacker.getName());
                 }
             } else {
-                debug("Either attacker or defender is null. Leaving isWon as it is.");
+                logger.debug("Either attacker or defender is null. Leaving isWon as it is.");
             }
         }
         return result;
     }
 
-    private static Hashtable<UnitHolder, Integer> parseUnits(String[] pUnits) {
-        int cnt = 0;
-        Hashtable<UnitHolder, Integer> units = new Hashtable<>();
-        for (UnitHolder unit : DataHolder.getSingleton().getUnits()) {
-            if (cnt < pUnits.length) {
-                units.put(unit, Integer.parseInt(pUnits[cnt]));
-            } else {
-                units.put(unit, 0);
-            }
-            cnt++;
+    private int getBuildingId(String translatedBuilding) {
+        for(int i = 0; i < BuildingSettings.BUILDING_NAMES.length; i++) {
+            if(translatedBuilding.equals(getVariable("report.buildings." + BuildingSettings.BUILDING_NAMES[i])))
+                return i;
         }
+        logger.error("Could not find Building " + translatedBuilding);
+        return -1;
+    }
 
+    private TroopAmountFixed parseUnits(String[] pUnits) {
+        TroopAmountFixed units = new TroopAmountFixed(0);
+        List<UnitHolder> allUnits = DataHolder.getSingleton().getUnits();
+        for (int i = 0; i < pUnits.length; i++) {
+                units.setAmountForUnit(allUnits.get(i), Integer.parseInt(pUnits[i]));
+        }
+        
         return units;
     }
 
-    public static int parseIntFromPattern(String pLine, String pPattern, int pGroupIndex) {
+    public int parseIntFromReportTable(String pLine, String pName) {
         try {
-            String val = pLine.replaceAll(pPattern, "$" + pGroupIndex).trim();
+            String val = pLine.trim().replaceAll(pName + "(.*?)(\\d+)", "$2").trim();
             return Integer.parseInt(val);
         } catch (Exception e) {
             return -1;
         }
     }
-
-    public static void main(String[] args) throws Exception {
-
-    //  ReportParser.parseReport();
-        /*
-         * String test = "1\t2\t3\t4\t5"; String[] split = test.split("\t"); for(String t : split){ System.out.println(t); }
-         */
-        Logger.getRootLogger().addAppender(new ConsoleAppender(new org.apache.log4j.PatternLayout("%d - %-5p - %-20c (%C [%L]) -  %m%n")));
-        GlobalOptions.setSelectedServer("de85");
-        ProfileManager.getSingleton().loadProfiles();
-        GlobalOptions.setSelectedProfile(ProfileManager.getSingleton().getProfiles("de85")[0]);
-        DataHolder.getSingleton().loadData(false); // GlobalOptions.loadUserData(); 
-        Transferable t = Toolkit.getDefaultToolkit().getSystemClipboard().getContents(null);
-        String data = (String) t.getTransferData(DataFlavor.stringFlavor);
-        System.out.println(new VillageParser().parse("OMIX-A0001 (280|661) K62"));
-        System.out.println(new ReportParser().parse(data));
-        //System.out.println(Integer.parseInt("4.344".replaceAll("\\.", "")));
+    
+    private String getVariable(String pProperty) {
+        return ParserVariableManager.getSingleton().getProperty(pProperty);
     }
 }

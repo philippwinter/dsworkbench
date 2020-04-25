@@ -16,7 +16,7 @@
 package de.tor.tribes.ui.windows;
 
 import de.tor.tribes.ui.views.DSWorkbenchAttackFrame;
-import de.tor.tribes.util.BrowserCommandSender;
+import de.tor.tribes.util.BrowserInterface;
 import de.tor.tribes.util.Constants;
 import de.tor.tribes.util.GlobalOptions;
 import java.awt.Graphics;
@@ -141,7 +141,7 @@ public class NotifierFrame extends javax.swing.JDialog {
                     } else if (ACTION_REGION != null && ACTION_REGION.contains(e.getPoint())) {
                         switch (notifyType) {
                             case 0: {
-                                BrowserCommandSender.openPage("https://github.com/Torridity/dsworkbench/releases");
+                                BrowserInterface.openPage("https://github.com/Torridity/dsworkbench/releases");
                                 break;
                             }
                             case 4: {
@@ -198,12 +198,7 @@ public class NotifierFrame extends javax.swing.JDialog {
                             jScrollPane1.getViewport().setViewPosition(new Point(0, 0));
                             repaint();
 
-                            int dur = 1;
-                            try {
-                                dur = Integer.parseInt(GlobalOptions.getProperty("notify.duration"));
-                            } catch (Exception ignored) {
-                            }
-
+                            int dur = GlobalOptions.getProperties().getInt("notify.duration");
                             if (dur > 0) {
                                 //set duration to 'dur' ten-seconds
                                 dur = dur * 10 * 1000;

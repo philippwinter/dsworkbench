@@ -15,15 +15,15 @@
  */
 package de.tor.tribes.util;
 
-import de.tor.tribes.io.DataHolder;
-import de.tor.tribes.io.UnitHolder;
-import java.io.BufferedReader;
+import de.tor.tribes.io.TroopAmountFixed;
+import de.tor.tribes.util.xml.JDomUtils;
 import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.util.Enumeration;
-import java.util.Hashtable;
-import org.apache.log4j.Logger;
+import java.util.HashMap;
+import java.util.List;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jdom2.Document;
+import org.jdom2.Element;
 
 /**
  *
@@ -31,77 +31,80 @@ import org.apache.log4j.Logger;
  */
 public class SplitSetHelper {
 
-    private static Logger logger = Logger.getLogger("SplitHelper");
+    private static Logger logger = LogManager.getLogger("SplitHelper");
 
-    public static void loadSplitSets(Hashtable<String, Hashtable<UnitHolder, Integer>> pTarget) {
+    public static void loadSplitSets(HashMap<String, TroopAmountFixed> pTarget) {
         String profileDir = GlobalOptions.getSelectedProfile().getProfileDirectory();
-        File filterFile = new File(profileDir + "/splits.sav");
+        File filterFile = new File(profileDir + "/splits.xml");
         if (!filterFile.exists()) {
             return;
         }
-
-        BufferedReader r = null;
-
+        
         try {
-            r = new BufferedReader(new FileReader(filterFile));
-            String line = "";
-            while ((line = r.readLine()) != null) {
-                String[] split = line.split(",");
-                String name = split[0];
-                Hashtable<UnitHolder, Integer> elements = new Hashtable<>();
-                for (int i = 1; i < split.length; i++) {
-                    String[] elemSplit = split[i].split("/");
-                    elements.put(DataHolder.getSingleton().getUnitByPlainName(elemSplit[0]), Integer.parseInt(elemSplit[1]));
-                }
-                pTarget.put(name, elements);
+            Document d = JDomUtils.getDocument(filterFile);
+            if(loadSplitSets(pTarget, d.getRootElement(), null) < 0) {
+                logger.info("Failed to load Splits inner");
             }
-        } catch (Exception e) {
-            logger.error("Failed to read split sets", e);
-        } finally {
-            try {
-                r.close();
-            } catch (Exception ignored) {
-            }
+        } catch(Exception e) {
+            logger.info("Failed to load Splits", e);
         }
     }
-
-    public static void saveSplitSets(Hashtable<String, Hashtable<UnitHolder, Integer>> pSource) {
-        String profileDir = GlobalOptions.getSelectedProfile().getProfileDirectory();
-        File filterFile = new File(profileDir + "/splits.sav");
-
-        StringBuilder b = new StringBuilder();
-        Enumeration<String> setKeys = pSource.keys();
-
-        while (setKeys.hasMoreElements()) {
-            String key = setKeys.nextElement();
-            b.append(key).append(",");
-            Hashtable<UnitHolder, Integer> elements = pSource.get(key);
-            Enumeration<UnitHolder> keys = elements.keys();
-            int cnt = 0;
-            while (keys.hasMoreElements()) {
-
-                UnitHolder unit = keys.nextElement();
-                b.append(unit.getPlainName()).append("/").append(elements.get(unit));
-                if (cnt < elements.size() - 1) {
-                    b.append(",");
-                }
-                cnt++;
-            }
-            b.append("\n");
+    
+    public static int loadSplitSets(HashMap<String, TroopAmountFixed> pTarget, Element pElm, String pExtension) {
+        if (pElm == null) {
+            logger.error("Element argument is 'null'");
+            return -1;
         }
-
-        FileWriter w = null;
+        int result = 0;
+        
         try {
-            w = new FileWriter(filterFile);
-            w.write(b.toString());
-            w.flush();
-        } catch (Exception e) {
-            logger.error("Failed to write split sets", e);
-        } finally {
-            try {
-                w.close();
-            } catch (Exception ignored) {
+            for (Element e : (List<Element>) JDomUtils.getNodes(pElm, "splits/split")) {
+                String name = e.getAttributeValue("name");
+                if (pExtension != null) {
+                    name += "_" + pExtension;
+                }
+                TroopAmountFixed amount = new TroopAmountFixed(e);
+                pTarget.put(name, amount);
+                result++;
             }
+        } catch(Exception e) {
+            result = result * (-1) - 1;
+            logger.info("Failed to load Splits", e);
         }
+        
+        return result;
+    }
+    
+    public static int importData(Element pElm, String pExtension) {
+        HashMap<String, TroopAmountFixed> pSource = new HashMap<>();
+        loadSplitSets(pSource);
+        int num = loadSplitSets(pSource, pElm, pExtension);
+        saveSplitSets(pSource);
+        return num;
+    }
+
+    public static void saveSplitSets(HashMap<String, TroopAmountFixed> pSource) {
+        Document doc = JDomUtils.createDocument();
+        doc.getRootElement().addContent(getExportData(pSource));
+        
+        String profileDir = GlobalOptions.getSelectedProfile().getProfileDirectory();
+        JDomUtils.saveDocument(doc, profileDir + "/splits.xml");
+    }
+    
+    public static Element getExportData() {
+        HashMap<String, TroopAmountFixed> pSource = new HashMap<>();
+        loadSplitSets(pSource);
+        return getExportData(pSource);
+    }
+    
+    public static Element getExportData(HashMap<String, TroopAmountFixed> pSource) {
+        Element splits = new Element("splits");
+        
+        for(String key: pSource.keySet()) {
+            Element split = pSource.get(key).toXml("split");
+            split.setAttribute("name", key);
+            splits.addContent(split);
+        }
+        return splits;
     }
 }

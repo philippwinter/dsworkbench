@@ -15,8 +15,8 @@
  */
 package de.tor.tribes.util;
 
-import de.tor.tribes.ui.windows.DSWorkbenchMainFrame;
 import de.tor.tribes.ui.panels.MapPanel;
+import de.tor.tribes.ui.windows.DSWorkbenchMainFrame;
 import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.FontMetrics;
@@ -49,18 +49,14 @@ public class ScreenshotSaver extends Thread {
         mScreen = pScreen;
     }
 
+    @Override
     public void run() {
         while (true) {
             if (mScreen != null) {
                 try {
                     Point2D.Double pos = MapPanel.getSingleton().getCurrentPosition();
                     String first = "";
-                    if (ServerSettings.getSingleton().getCoordType() != 2) {
-                        int[] hier = DSCalculator.xyToHierarchical((int) pos.x, (int) pos.y);
-                        first = "Zentrum: " + hier[0] + ":" + hier[1] + ":" + hier[2];
-                    } else {
-                        first = "Zentrum: " + (int) Math.floor(pos.getX()) + "|" + (int) Math.floor(pos.getY());
-                    }
+                    first = "Zentrum: " + (int) Math.floor(pos.getX()) + "|" + (int) Math.floor(pos.getY());
 
                     BufferedImage result = ImageUtils.createCompatibleBufferedImage(mScreen.getWidth(null), mScreen.getHeight(null), BufferedImage.OPAQUE);
                     Graphics2D g2d = (Graphics2D) result.getGraphics();

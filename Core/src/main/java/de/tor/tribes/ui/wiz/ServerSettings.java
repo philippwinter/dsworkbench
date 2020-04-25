@@ -17,23 +17,25 @@ package de.tor.tribes.ui.wiz;
 
 import de.tor.tribes.io.ServerManager;
 import de.tor.tribes.types.ext.Tribe;
-import org.netbeans.spi.wizard.Wizard;
-import org.netbeans.spi.wizard.WizardController;
-import org.netbeans.spi.wizard.WizardPanel;
-import org.netbeans.spi.wizard.WizardPanelNavResult;
-
-import javax.swing.*;
 import java.io.*;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.*;
 import java.util.zip.GZIPInputStream;
+import javax.swing.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.netbeans.spi.wizard.Wizard;
+import org.netbeans.spi.wizard.WizardController;
+import org.netbeans.spi.wizard.WizardPanel;
+import org.netbeans.spi.wizard.WizardPanelNavResult;
 
 /**
  *
  * @author Torridity
  */
 public class ServerSettings extends javax.swing.JPanel implements WizardPanel {
+    private static Logger logger = LogManager.getLogger("ServerSettings");
 
   private WizardController wizCtrl;
   private Map currentSettings = null;
@@ -47,11 +49,11 @@ public class ServerSettings extends javax.swing.JPanel implements WizardPanel {
     wizCtrl = pWizCtrl;
     currentSettings = map;
     try {
-          //  List<DatabaseServerEntry> entries = DatabaseInterface.getServerInfo(ProxyHelper.getProxyFromProperties(currentSettings));
+      //List<DatabaseServerEntry> entries = DatabaseInterface.getServerInfo(ProxyHelper.getProxyFromProperties(currentSettings));
       ServerManager.loadServerList(ProxyHelper.getProxyFromProperties(currentSettings));
       String[] serverIds = ServerManager.getServerIDs();
       if (serverIds == null || serverIds.length == 0) {
-        throw new Exception();
+        throw new Exception("Keine / Leere liste" + ((serverIds==null)?("null"):("len: " + serverIds.length)));
       } else {
         Arrays.sort(serverIds);
         DefaultComboBoxModel model = new DefaultComboBoxModel();
@@ -65,6 +67,7 @@ public class ServerSettings extends javax.swing.JPanel implements WizardPanel {
         jTribeBox.setModel(tribeModel);
       }
     } catch (Exception e) {
+      logger.error("Fehler bei der Server suche", e);
       wizCtrl.setProblem("Keine Server gefunden. Bitte versuch es später noch einmal.");
       isError = true;
     }
@@ -224,6 +227,7 @@ private void fireSelectServerEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:e
           }
 
           if (tribes.isEmpty()) {
+              logger.error("Keine Spieler gefunden");
               wizCtrl.setProblem("Keine Spieler gefunden. Versuch es bitte später noch einmal.");
               return;
           }
@@ -237,12 +241,13 @@ private void fireSelectServerEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:e
           currentSettings.put("server", selection);
           wizCtrl.setProblem("Bitte einen Spielernamen wählen");
       } catch (Throwable t) {
+          logger.error("Fehler beim download der Spielerdaten", t);
           wizCtrl.setProblem("Fehler beim Download der Spielerdaten");
       }
 
   } catch (Throwable t) {
+    logger.error("Fehler beim download der Spielerdaten", t);
     wizCtrl.setProblem("Fehler beim Herunterladen der Serverinformationen.\nBitte versuch es später nochmal.");
-    t.printStackTrace();
   }
 
 }//GEN-LAST:event_fireSelectServerEvent
@@ -258,7 +263,8 @@ private void fireTribeChangedEvent(java.awt.event.ItemEvent evt) {//GEN-FIRST:ev
     return;
   }
   wizCtrl.setProblem(null);
-  currentSettings.put("tribe", tribe.getName());
+  currentSettings.put("tribe.name", tribe.getName());
+  currentSettings.put("tribe.id", tribe.getId());
 }//GEN-LAST:event_fireTribeChangedEvent
 
   private void downloadDataFile(URL pSource, String pLocalName) throws Exception {
@@ -268,21 +274,8 @@ private void fireTribeChangedEvent(java.awt.event.ItemEvent evt) {//GEN-FIRST:ev
     int bytes = 0;
     byte[] data = new byte[1024];
     ByteArrayOutputStream result = new ByteArrayOutputStream();
-    int sum = 0;
-    while (bytes != -1) {
-
-      if (bytes != -1) {
+    while ((bytes = isr.read(data)) != -1) {
         result.write(data, 0, bytes);
-      }
-
-      bytes = isr.read(data);
-      sum += bytes;
-      if (sum % 500 == 0) {
-        try {
-          Thread.sleep(50);
-        } catch (Exception ignored) {
-        }
-      }
     }
 
     tempWriter.write(result.toByteArray());

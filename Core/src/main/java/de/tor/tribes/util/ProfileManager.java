@@ -15,20 +15,19 @@
  */
 package de.tor.tribes.util;
 
-import de.tor.tribes.util.interfaces.ProfileManagerListener;
-import de.tor.tribes.io.DataHolder;
 import de.tor.tribes.types.UserProfile;
+import de.tor.tribes.types.ext.Tribe;
+import de.tor.tribes.util.interfaces.ProfileManagerListener;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FilenameFilter;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Properties;
 import org.apache.commons.io.FileUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  *
@@ -36,7 +35,7 @@ import org.apache.log4j.Logger;
  */
 public class ProfileManager {
 
-    private static Logger logger = Logger.getLogger("ProfileManager");
+    private static Logger logger = LogManager.getLogger("ProfileManager");
     private static ProfileManager SINGLETON = null;
     private List<UserProfile> mProfiles = null;
     private List<ProfileManagerListener> mListeners = null;
@@ -64,134 +63,80 @@ public class ProfileManager {
     }
 
     public UserProfile[] getProfiles() {
-        Collections.sort(mProfiles, new Comparator<UserProfile>() {
-
-            @Override
-            public int compare(UserProfile o1, UserProfile o2) {
-                if (o1.getServerId().length() < o2.getServerId().length()) {
-                    return -1;
-                } else if (o1.getServerId().length() > o2.getServerId().length()) {
-                    return 1;
-                }
-                return o1.getServerId().compareTo(o2.getServerId());
-            }
-        });
+        Collections.sort(mProfiles, new UserProfileComperator());
         return mProfiles.toArray(new UserProfile[]{});
     }
 
     public UserProfile[] getProfiles(String pServer) {
         List<UserProfile> profilesForServer = new LinkedList<>();
-        for (UserProfile profile : mProfiles.toArray(new UserProfile[]{})) {
+        for (UserProfile profile : mProfiles) {
             if (profile.getServerId().equals(pServer)) {
                 profilesForServer.add(profile);
             }
         }
 
-        Collections.sort(profilesForServer, new Comparator<UserProfile>() {
-
-            @Override
-            public int compare(UserProfile o1, UserProfile o2) {
-                if (o1.getServerId().length() < o2.getServerId().length()) {
-                    return -1;
-                } else if (o1.getServerId().length() > o2.getServerId().length()) {
-                    return 1;
-                }
-                return o1.getServerId().compareTo(o2.getServerId());
-            }
-        });
+        Collections.sort(profilesForServer, new UserProfileComperator());
         return profilesForServer.toArray(new UserProfile[]{});
+    }
+
+    public Object getProfile(String pServer, Tribe pTribe) {
+        for (UserProfile profile : mProfiles) {
+            if (profile.getServerId().equals(pServer) && profile.getTribeName().equals(pTribe.getName())) {
+                return profile;
+            }
+        }
+        return null;
     }
 
     public void loadProfiles() {
         mProfiles = new LinkedList<>();
         File serversDir = new File("./servers/");
         for (File f : serversDir.listFiles()) {
-            if (f.isDirectory()) {
-                //server dir
-                File profilesDir = new File(f.getPath() + "/profiles/");
-                if (profilesDir.exists()) {
-                    File[] profiles = profilesDir.listFiles();
-                    if (profiles != null && profiles.length != 0) {
-                        logger.debug("Got " + profiles.length + "profile directories");
-                    }
-                    for (File profileDir : profiles) {
-                        logger.debug("Got profile directory '" + profileDir.getPath() + "'");
-                        if (new File(profileDir.getPath() + File.separator + "deleted").exists()) {
-                            logger.debug("Profile dir " + profileDir.getName() + " is sheduled for deletion");
-                            if (FileUtils.deleteQuietly(new File(profileDir.getPath()))) {
-                                logger.debug("Profile dir deleted");
-                            } else {
-                                logger.debug("Could not delete profile dir, yet");
-                            }
-                        } else {
-                            if (profileDir.isDirectory() && profileDir.list().length != 0) {
-                                //profile directory
-                                String profileId = profileDir.getName();
-                                String serverName = f.getName();
-                                logger.debug("Found profile #'" + profileId + "' on server '" + serverName + "'");
-                                try {
-                                    UserProfile profile = UserProfile.loadProfile(serverName, Long.parseLong(profileId));
-                                    if (profile != null) {
-                                        logger.info("Adding loaded profile #" + profileId);
-                                        mProfiles.add(profile);
-                                    }
-                                } catch (Exception e) {
-                                    logger.error("Failed to load profile", e);
-                                }
-                            } else {
-                                if (profileDir.list().length == 0) {
-                                    try {
-                                        FileUtils.deleteDirectory(profileDir);
-                                    } catch (IOException ignored) {
-                                    }
-                                }
-                            }
-                        }
+            if (!f.isDirectory()) continue;
+            
+            //server dir
+            File profilesDir = new File(f.getPath() + "/profiles/");
+            if (!profilesDir.exists() || !profilesDir.isDirectory()) continue;
+            
+            File[] profiles = profilesDir.listFiles();
+            if (profiles.length != 0) {
+                logger.debug("Got " + profiles.length + "profile directories");
+            }
+            for (File profileDir : profiles) {
+                logger.debug("Got profile directory '" + profileDir.getPath() + "'");
+                if (new File(profileDir.getPath() + File.separator + "deleted").exists()) {
+                    logger.debug("Profile dir " + profileDir.getName() + " is sheduled for deletion");
+                    if (FileUtils.deleteQuietly(new File(profileDir.getPath()))) {
+                        logger.debug("Profile dir deleted");
+                    } else {
+                        logger.debug("Could not delete profile dir, yet");
                     }
                 } else {
-                    //handle old structure
-                    logger.debug("Transforming legacy data structure to profile structure");
-                    String server = f.getName();
-                    Properties prop = new Properties();
-                    FileInputStream fin = null;
-                    try {
-                        fin = new FileInputStream("global.properties");
-                        prop.load(fin);
-
-                        String player = prop.getProperty("player." + server);
-
-                        logger.debug(" - found player '" + player + "' for server '" + server + "'");
-                        UserProfile newProfile = UserProfile.createFast(server, player);
-
-                        if (newProfile != null) {
-                            mProfiles.add(newProfile);
-                            //copy user data
-                            File[] xmlFiles = f.listFiles(new FilenameFilter() {
-
-                                @Override
-                                public boolean accept(File dir, String name) {
-                                    return name.endsWith(".xml");
-                                }
-                            });
-                            for (File xmlFile : xmlFiles) {
-                                DataHolder.getSingleton().copyFile(xmlFile, new File(newProfile.getProfileDirectory() + "/" + xmlFile.getName()));
+                    if (!profileDir.isDirectory()) continue;
+                    if (profileDir.list().length != 0) {
+                        //profile directory
+                        String profileId = profileDir.getName();
+                        String serverName = f.getName();
+                        logger.debug("Found profile #'" + profileId + "' on server '" + serverName + "'");
+                        try {
+                            UserProfile profile = UserProfile.loadProfile(serverName, Long.parseLong(profileId));
+                            if (profile != null) {
+                                logger.info("Adding loaded profile #" + profileId);
+                                mProfiles.add(profile);
                             }
-                        } else {
-                            logger.error("Failed to transform profile");
+                        } catch (Exception e) {
+                            logger.error("Failed to load profile", e);
                         }
-                    } catch (Exception e) {
-                        logger.warn("Failed to transfor legacy profile", e);
-                    } finally {
-                        if (fin != null) {
+                    } else {
+                        if (profileDir.list().length == 0) {
                             try {
-                                fin.close();
+                                FileUtils.deleteDirectory(profileDir);
                             } catch (IOException ignored) {
                             }
                         }
                     }
                 }
             }
-
         }
         fireProfilesLoadedEvents();
     }
@@ -205,5 +150,17 @@ public class ProfileManager {
 
     public static void main(String[] args) {
         ProfileManager.getSingleton().loadProfiles();
+    }
+
+    private class UserProfileComperator implements Comparator<UserProfile> {
+        @Override
+        public int compare(UserProfile o1, UserProfile o2) {
+            if (o1.getServerId().length() < o2.getServerId().length()) {
+                return -1;
+            } else if (o1.getServerId().length() > o2.getServerId().length()) {
+                return 1;
+            }
+            return o1.getServerId().compareTo(o2.getServerId());
+        }
     }
 }

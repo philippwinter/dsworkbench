@@ -20,16 +20,15 @@ import de.tor.tribes.io.DataHolder;
 import de.tor.tribes.types.Marker;
 import de.tor.tribes.types.UserProfile;
 import de.tor.tribes.types.ext.*;
-import de.tor.tribes.ui.windows.DSWorkbenchMainFrame;
 import de.tor.tribes.ui.ImageManager;
 import de.tor.tribes.ui.MinimapListener;
-import de.tor.tribes.ui.windows.MinimapZoomFrame;
 import de.tor.tribes.ui.renderer.map.MapRenderer;
+import de.tor.tribes.ui.windows.DSWorkbenchMainFrame;
+import de.tor.tribes.ui.windows.MinimapZoomFrame;
 import de.tor.tribes.util.Constants;
 import de.tor.tribes.util.GlobalOptions;
 import de.tor.tribes.util.ImageUtils;
 import de.tor.tribes.util.JOptionPaneHelper;
-import de.tor.tribes.util.ProfileManager;
 import de.tor.tribes.util.ServerSettings;
 import de.tor.tribes.util.interfaces.ToolChangeListener;
 import de.tor.tribes.util.mark.MarkerManager;
@@ -37,13 +36,13 @@ import de.tor.tribes.util.tag.TagManager;
 import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Composite;
-import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.awt.RenderingHints;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
@@ -53,15 +52,14 @@ import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.text.NumberFormat;
-import java.util.Enumeration;
-import java.util.Hashtable;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.filechooser.FileFilter;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.labels.StandardPieSectionLabelGenerator;
@@ -82,13 +80,12 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
     public void dataChangedEvent(String pGroup) {
         redraw();
     }
-    private static Logger logger = Logger.getLogger("MinimapCanvas");
+    private static Logger logger = LogManager.getLogger("MinimapCanvas");
     private Image mBuffer = null;
     private int iX = 0;
     private int iY = 0;
     private int iWidth = 0;
     private int iHeight = 0;
-    private MinimapZoomFrame mZoomFrame = null;
     private int iCurrentCursor = ImageManager.CURSOR_DEFAULT;
     private static MinimapPanel SINGLETON = null;
     private ScreenshotPanel mScreenshotPanel = null;
@@ -97,6 +94,9 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
     private boolean doRedraw = false;
     private int iXDown = 0;
     private int iYDown = 0;
+    
+    //x,y start point
+    //width, height end point
     private Rectangle2D rDrag = null;
     private Rectangle rVisiblePart = null;
     boolean zoomed = false;
@@ -104,8 +104,8 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
     private static final int ID_MINIMAP = 0;
     private static final int ID_ALLY_CHART = 1;
     private static final int ID_TRIBE_CHART = 2;
-    private Hashtable<Integer, Rectangle> minimapButtons = new Hashtable<>();
-    private Hashtable<Integer, BufferedImage> minimapIcons = new Hashtable<>();
+    private HashMap<Integer, Rectangle> minimapButtons = new HashMap<>();
+    private HashMap<Integer, BufferedImage> minimapIcons = new HashMap<>();
     private int iCurrentView = ID_MINIMAP;
     private BufferedImage mChartImage;
     private int lastHash = 0;
@@ -137,9 +137,7 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
         } catch (Exception ignored) {
         }
         jPanel1.add(mScreenshotPanel);
-        int mapWidth = (int) ServerSettings.getSingleton().getMapDimension().getWidth();
-        int mapHeight = (int) ServerSettings.getSingleton().getMapDimension().getHeight();
-        rVisiblePart = new Rectangle(0, 0, mapWidth, mapHeight);
+        rVisiblePart = new Rectangle(ServerSettings.getSingleton().getMapDimension());
         zoomed = false;
         MarkerManager.getSingleton().addManagerListener(this);
         TagManager.getSingleton().addManagerListener(this);
@@ -148,7 +146,6 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
             MinimapRepaintThread.getSingleton().start();
         }
         addMouseListener(new MouseListener() {
-
             @Override
             public void mouseClicked(MouseEvent e) {
                 if (!showControls && e.getButton() != MouseEvent.BUTTON1) {
@@ -160,12 +157,10 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
                 }
                 if (!showControls && iCurrentView == ID_MINIMAP) {
                     Point p = mousePosToMapPosition(e.getX(), e.getY());
-                    DSWorkbenchMainFrame.getSingleton().centerPosition(p.x, p.y);
+                    DSWorkbenchMainFrame.getSingleton().centerPosition(p.getX(), p.getY());
                     MapPanel.getSingleton().getMapRenderer().initiateRedraw(MapRenderer.ALL_LAYERS);
-                    if (mZoomFrame != null) {
-                        if (mZoomFrame.isVisible()) {
-                            mZoomFrame.toFront();
-                        }
+                    if (MinimapZoomFrame.getSingleton().isVisible()) {
+                        MinimapZoomFrame.getSingleton().toFront();
                     }
                 } else {
                     if (minimapButtons.get(ID_MINIMAP).contains(e.getPoint())) {
@@ -177,12 +172,12 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
                         iCurrentView = ID_ALLY_CHART;
                         lastHash = 0;
                         showControls = false;
-                        updateComplete(null);
+                        updateComplete();
                     } else if (minimapButtons.get(ID_TRIBE_CHART).contains(e.getPoint())) {
                         iCurrentView = ID_TRIBE_CHART;
                         lastHash = 0;
                         showControls = false;
-                        updateComplete(null);
+                        updateComplete();
                     }
                 }
             }
@@ -208,13 +203,14 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
                 }
                 if (iCurrentCursor == ImageManager.CURSOR_SHOT) {
                     try {
-                        BufferedImage i = MinimapRepaintThread.getSingleton().getBuffer();
-                        int mapWidth = (int) ServerSettings.getSingleton().getMapDimension().getWidth();
-                        int mapHeight = (int) ServerSettings.getSingleton().getMapDimension().getHeight();
-                        int x = (int) Math.rint((double) mapWidth / (double) getWidth() * rDrag.getX());
-                        int y = (int) Math.rint((double) mapHeight / (double) getHeight() * rDrag.getY());
-                        int w = (int) Math.rint((double) mapWidth / (double) getWidth() * (rDrag.getWidth() - rDrag.getX()));
-                        int h = (int) Math.rint((double) mapHeight / (double) getHeight() * (rDrag.getHeight() - rDrag.getY()));
+                        BufferedImage i = MinimapRepaintThread.getSingleton().getImage();
+                        double widthFactor = ((double) ServerSettings.getSingleton().getMapDimension().width) / getWidth();
+                        double heightFactor = ((double) ServerSettings.getSingleton().getMapDimension().height) / getHeight();
+                        
+                        int x = (int) Math.rint(widthFactor * rDrag.getX());
+                        int y = (int) Math.rint(heightFactor * rDrag.getY());
+                        int w = (int) Math.rint(widthFactor * (rDrag.getWidth() - rDrag.getX()));
+                        int h = (int) Math.rint(heightFactor * (rDrag.getHeight() - rDrag.getY()));
                         BufferedImage sub = i.getSubimage(x, y, w, h);
                         mScreenshotPanel.setBuffer(sub);
                         jPanel1.setSize(mScreenshotPanel.getSize());
@@ -230,12 +226,14 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
                     }
                 } else if (iCurrentCursor == ImageManager.CURSOR_ZOOM) {
                     if (!zoomed) {
-                        int mapWidth = (int) ServerSettings.getSingleton().getMapDimension().getWidth();
-                        int mapHeight = (int) ServerSettings.getSingleton().getMapDimension().getHeight();
-                        int x = (int) Math.rint((double) mapWidth / (double) getWidth() * rDrag.getX());
-                        int y = (int) Math.rint((double) mapHeight / (double) getHeight() * rDrag.getY());
-                        int w = (int) Math.rint((double) mapWidth / (double) getWidth() * (rDrag.getWidth() - rDrag.getX()));
-
+                        Rectangle mapDim = ServerSettings.getSingleton().getMapDimension();
+                        double widthFactor = ((double) mapDim.width) / getWidth();
+                        double heightFactor = ((double) mapDim.height) / getHeight();
+                        
+                        int x = (int) Math.rint(widthFactor * rDrag.getX() + mapDim.getMinX());
+                        int y = (int) Math.rint(heightFactor * rDrag.getY() + mapDim.getMinY());
+                        int w = (int) Math.rint(widthFactor * (rDrag.getWidth() - rDrag.getX()));
+                        
                         if (w >= 10) {
                             rVisiblePart = new Rectangle(x, y, w, w);
                             MinimapRepaintThread.getSingleton().setVisiblePart(rVisiblePart);
@@ -243,14 +241,12 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
                             zoomed = true;
                         }
                     } else {
-                        int mapWidth = (int) ServerSettings.getSingleton().getMapDimension().getWidth();
-                        int mapHeight = (int) ServerSettings.getSingleton().getMapDimension().getHeight();
-                        rVisiblePart = new Rectangle(0, 0, mapWidth, mapHeight);
+                        rVisiblePart = new Rectangle(ServerSettings.getSingleton().getMapDimension());
                         MinimapRepaintThread.getSingleton().setVisiblePart(rVisiblePart);
                         redraw();
                         zoomed = false;
                     }
-                    mZoomFrame.setVisible(false);
+                    MinimapZoomFrame.getSingleton().setVisible(false);
                 }
                 iXDown = 0;
                 iYDown = 0;
@@ -264,23 +260,19 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
                 }
                 switch (iCurrentCursor) {
                     case ImageManager.CURSOR_ZOOM: {
-                        if (mZoomFrame != null) {
-                            mZoomFrame.setVisible(true);
-                        }
+                        MinimapZoomFrame.getSingleton().setVisible(true);
                     }
                 }
             }
 
             @Override
             public void mouseExited(MouseEvent e) {
-                if (mZoomFrame != null) {
-                    if (mZoomFrame.isVisible()) {
-                        mZoomFrame.setVisible(false);
-                    }
-                    iXDown = 0;
-                    iYDown = 0;
-                    rDrag = null;
+                if (MinimapZoomFrame.getSingleton().isVisible()) {
+                    MinimapZoomFrame.getSingleton().setVisible(false);
                 }
+                iXDown = 0;
+                iYDown = 0;
+                rDrag = null;
             }
         });
 
@@ -307,7 +299,6 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
                         break;
                     }
                 }
-
             }
 
             @Override
@@ -315,24 +306,20 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
                 if (iCurrentView == ID_MINIMAP) {
                     switch (iCurrentCursor) {
                         case ImageManager.CURSOR_ZOOM: {
-                            if (mZoomFrame != null) {
-                                if (!mZoomFrame.isVisible()) {
-                                    mZoomFrame.setVisible(true);
-                                }
-                                int mapWidth = (int) ServerSettings.getSingleton().getMapDimension().getWidth();
-                                int mapHeight = (int) ServerSettings.getSingleton().getMapDimension().getHeight();
-
-                                int x = (int) Math.rint((double) mapWidth / (double) getWidth() * (double) e.getX());
-                                int y = (int) Math.rint((double) mapHeight / (double) getHeight() * (double) e.getY());
-                                mZoomFrame.updatePosition(x, y);
+                            if (!MinimapZoomFrame.getSingleton().isVisible()) {
+                                MinimapZoomFrame.getSingleton().setVisible(true);
                             }
+                            int mapWidth = (int) ServerSettings.getSingleton().getMapDimension().getWidth();
+                            int mapHeight = (int) ServerSettings.getSingleton().getMapDimension().getHeight();
+
+                            int x = (int) Math.rint((double) mapWidth / (double) getWidth() * (double) e.getX());
+                            int y = (int) Math.rint((double) mapHeight / (double) getHeight() * (double) e.getY());
+                            MinimapZoomFrame.getSingleton().updatePosition(x, y);
                             break;
                         }
                         default: {
-                            if (mZoomFrame != null) {
-                                if (mZoomFrame.isVisible()) {
-                                    mZoomFrame.setVisible(false);
-                                }
+                            if (MinimapZoomFrame.getSingleton().isVisible()) {
+                                MinimapZoomFrame.getSingleton().setVisible(false);
                             }
                         }
                     }
@@ -353,8 +340,6 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
                     @Override
                     public void mouseWheelMoved(MouseWheelEvent e) {
 
-
-
                         if (iCurrentView != ID_MINIMAP) {
                             return;
                         }
@@ -371,15 +356,11 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
                             iCurrentCursor = ImageManager.CURSOR_DEFAULT;
                         }
                         if (iCurrentCursor != ImageManager.CURSOR_ZOOM) {
-                            if (mZoomFrame != null) {
-                                if (mZoomFrame.isVisible()) {
-                                    mZoomFrame.setVisible(false);
-                                }
+                            if (MinimapZoomFrame.getSingleton().isVisible()) {
+                                MinimapZoomFrame.getSingleton().setVisible(false);
                             }
                         } else {
-                            if (mZoomFrame != null) {
-                                mZoomFrame.setVisible(true);
-                            }
+                            MinimapZoomFrame.getSingleton().setVisible(true);
                         }
                         setCurrentCursor(iCurrentCursor);
                     }
@@ -438,8 +419,8 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
     }
 
     @Override
-    public void paint(Graphics g) {
-        super.paint(g);
+    public void paintComponent(Graphics g) {
+        super.paintComponent(g);
         try {
             Graphics2D g2d = (Graphics2D) g;
             g2d.clearRect(0, 0, getWidth(), getHeight());
@@ -467,7 +448,8 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
                 } else if (iCurrentCursor == ImageManager.CURSOR_ZOOM) {
                     if (rDrag != null) {
                         g2d.setColor(Color.CYAN);
-                        g2d.drawRect((int) rDrag.getMinX(), (int) rDrag.getMinY(), (int) (rDrag.getWidth() - rDrag.getX()), (int) (rDrag.getWidth() - rDrag.getX()));
+                        g2d.drawRect((int) rDrag.getX(), (int) rDrag.getY(), (int) (rDrag.getWidth() - rDrag.getX()),
+                                (int) ((rDrag.getWidth() - rDrag.getX()) * ((double) getHeight()) / getWidth()));
                     }
                 }
             }
@@ -528,27 +510,20 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
         redraw();
     }
 
-    protected void updateComplete(BufferedImage pBuffer) {
+    protected void updateComplete() {
         try {
             if (iCurrentView == ID_MINIMAP) {
-                if (mZoomFrame == null) {
-                    mZoomFrame = new MinimapZoomFrame(pBuffer);
-                    mZoomFrame.setSize(300, 300);
-                    mZoomFrame.setLocation(0, 0);
-                }
-                if (mBuffer == null) {
-                    if (pBuffer == null) {
+                BufferedImage scaled = MinimapRepaintThread.getSingleton().getScaledImage(getWidth(), getHeight());
+                
+                if ((mBuffer == null || doRedraw
+                        || (mBuffer.getWidth(null) != getWidth()) || (mBuffer.getHeight(null) != getHeight()))
+                        && MinimapRepaintThread.getSingleton().drawn()) {
+                    if (scaled == null) {
                         MinimapRepaintThread.getSingleton().update();
                         return;
                     }
 
-                    mBuffer = pBuffer.getScaledInstance(getWidth(), getHeight(), BufferedImage.SCALE_SMOOTH);
-                } else if ((mBuffer.getWidth(null) != getWidth()) || (mBuffer.getHeight(null) != getHeight())) {
-                    mZoomFrame.setMinimap(pBuffer);
-                    mBuffer = pBuffer.getScaledInstance(getWidth(), getHeight(), BufferedImage.SCALE_SMOOTH);
-                } else if (doRedraw) {
-                    mZoomFrame.setMinimap(pBuffer);
-                    mBuffer = pBuffer.getScaledInstance(getWidth(), getHeight(), BufferedImage.SCALE_SMOOTH);
+                    mBuffer = scaled;
                 }
             } else {
                 // long s = System.currentTimeMillis();
@@ -561,7 +536,10 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
                 // System.out.println("dur " + (System.currentTimeMillis() - s));
             }
             repaint();
-            doRedraw = false;
+            if(MinimapRepaintThread.getSingleton().drawn()) {
+                //wait with redrawing for repaint Thread to finish
+                doRedraw = false;
+            }
 
         } catch (Exception e) {
             logger.error("Exception while updating Minimap", e);
@@ -572,7 +550,7 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
     }
 
     private void renderChartInfo() {
-        Hashtable<Object, Marker> marks = new Hashtable<>();
+        HashMap<Object, Marker> marks = new HashMap<>();
         DefaultPieDataset dataset = buildDataset(marks);
 
         JFreeChart chart = ChartFactory.createPieChart(
@@ -588,15 +566,12 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
         // plot.setBackgroundPaint(null);
         //  plot.setShadowPaint(null);
 
-        Enumeration<Object> markKeys = marks.keys();
-
-
-        while (markKeys.hasMoreElements()) {
+        for(Object o: marks.keySet()) {
             if (iCurrentView == ID_ALLY_CHART) {
-                Ally a = (Ally) markKeys.nextElement();
+                Ally a = (Ally) o;
                 plot.setSectionPaint(a.getTag(), marks.get(a).getMarkerColor());
             } else {
-                Tribe t = (Tribe) markKeys.nextElement();
+                Tribe t = (Tribe) o;
                 plot.setSectionPaint(t.getName(), marks.get(t).getMarkerColor());
             }
         }
@@ -640,25 +615,20 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
         // g2d.drawImage(bi, 30, 30, null);
     }
 
-    private DefaultPieDataset buildDataset(Hashtable<Object, Marker> marks) {
+    private DefaultPieDataset buildDataset(HashMap<Object, Marker> marks) {
         DefaultPieDataset dataset = new DefaultPieDataset();
 
-
         if (iCurrentView == ID_ALLY_CHART) {
-            Hashtable<Ally, Integer> allyCount = MapPanel.getSingleton().getMapRenderer().getAllyCount();
+            HashMap<Ally, Integer> allyCount = MapPanel.getSingleton().getMapRenderer().getAllyCount();
             int overallVillages = 0;
-            Enumeration<Ally> keys = allyCount.keys();
+            
             //count all villages
-            while (keys.hasMoreElements()) {
-                overallVillages += allyCount.get(keys.nextElement());
+            for(Integer count: allyCount.values()) {
+                overallVillages += count;
             }
-            keys = allyCount.keys();
 
             double rest = 0;
-            // Hashtable<Ally, Marker> marks = new Hashtable<Ally, Marker>();
-
-            while (keys.hasMoreElements()) {
-                Ally a = keys.nextElement();
+            for(Ally a: allyCount.keySet()) {
                 Integer v = allyCount.get(a);
                 Double perc = (double) v / (double) overallVillages * 100;
 
@@ -677,23 +647,17 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
 
             dataset.setValue("Sonstige", rest);
         } else {
-            Hashtable<Tribe, Integer> tribeCount = MapPanel.getSingleton().getMapRenderer().getTribeCount();
+            HashMap<Tribe, Integer> tribeCount = MapPanel.getSingleton().getMapRenderer().getTribeCount();
 
             int overallVillages = 0;
-            Enumeration<Tribe> keys = tribeCount.keys();
             //count all villages
 
-            while (keys.hasMoreElements()) {
-                overallVillages += tribeCount.get(keys.nextElement());
+            for(Integer trbCnt: tribeCount.values()) {
+                overallVillages += trbCnt;
             }
-            keys = tribeCount.keys();
 
             double rest = 0;
-            //  Hashtable<Tribe, Marker> marks = new Hashtable<Tribe, Marker>();
-
-            while (keys.hasMoreElements()) {
-                Tribe t = keys.nextElement();
-
+            for(Tribe t: tribeCount.keySet()) {
                 Integer v = tribeCount.get(t);
 
                 Double perc = (double) v / (double) overallVillages * 100;
@@ -724,9 +688,7 @@ public class MinimapPanel extends javax.swing.JPanel implements GenericManagerLi
     }
 
     public void redraw(boolean pResize) {
-        int mapWidth = (int) ServerSettings.getSingleton().getMapDimension().getWidth();
-        int mapHeight = (int) ServerSettings.getSingleton().getMapDimension().getHeight();
-        rVisiblePart = new Rectangle(0, 0, mapWidth, mapHeight);
+        rVisiblePart = new Rectangle(ServerSettings.getSingleton().getMapDimension());
         MinimapRepaintThread.getSingleton().setVisiblePart(rVisiblePart);
         redraw();
     }
@@ -910,9 +872,7 @@ private void fireCloseScreenshotEvent(java.awt.event.MouseEvent evt) {//GEN-FIRS
 }//GEN-LAST:event_fireCloseScreenshotEvent
 private void fireSaveScreenshotEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireSaveScreenshotEvent
     String dir = GlobalOptions.getProperty("screen.dir");
-    if (dir == null) {
-        dir = ".";
-    }
+    
     JFileChooser chooser = null;
     try {
         chooser = new JFileChooser(dir);
@@ -972,19 +932,6 @@ private void fireScreenshotControlClosingEvent(java.awt.event.WindowEvent evt) {
     jScreenshotPreview.setVisible(false);
 }//GEN-LAST:event_fireScreenshotControlClosingEvent
 
-    public static void main(String[] args) {
-        Logger.getRootLogger().addAppender(new ConsoleAppender(new org.apache.log4j.PatternLayout("%d - %-5p - %-20c (%C [%L]) - %m%n")));
-        GlobalOptions.setSelectedServer("de43");
-        ProfileManager.getSingleton().loadProfiles();
-        GlobalOptions.setSelectedProfile(ProfileManager.getSingleton().getProfiles("de43")[0]);
-        DataHolder.getSingleton().loadData(false);
-        JFrame f = new JFrame();
-        f.getContentPane().add(MinimapPanel.getSingleton());
-        f.pack();
-        f.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        f.setVisible(true);
-
-    }
   // Variables declaration - do not modify//GEN-BEGIN:variables
   private javax.swing.JButton jButton1;
   private javax.swing.JButton jButton2;
@@ -1002,10 +949,10 @@ private void fireScreenshotControlClosingEvent(java.awt.event.WindowEvent evt) {
 
 class MinimapRepaintThread extends Thread {
 
-    private static Logger logger = Logger.getLogger("MinimapRenderer");
+    private static Logger logger = LogManager.getLogger("MinimapRenderer");
     private BufferedImage mBuffer = null;
     private boolean drawn = false;
-    private Dimension mapDim = null;
+    private Rectangle mapDim = null;
     private static MinimapRepaintThread SINGLETON = null;
     private Rectangle visiblePart = null;
 
@@ -1031,23 +978,40 @@ class MinimapRepaintThread extends Thread {
     }
 
     public void update() {
-        Dimension currentDim = ServerSettings.getSingleton().getMapDimension();
+        Rectangle currentDim = ServerSettings.getSingleton().getMapDimension();
         if (currentDim == null) {
             return;
         }
-        if ((mapDim == null) || (mapDim.width != currentDim.width) || (mapDim.height != currentDim.height)) {
-            if (mapDim == null) {
-                mapDim = (Dimension) currentDim.clone();
-            } else {
-                mapDim.setSize(currentDim);
-            }
-            mBuffer = ImageUtils.createCompatibleBufferedImage(mapDim.width, mapDim.height, BufferedImage.OPAQUE);
+        if ((mapDim == null) || (!mapDim.equals(currentDim))) {
+            mapDim = new Rectangle(currentDim);
+            mBuffer = ImageUtils.createCompatibleBufferedImage(mapDim.width, mapDim.height, BufferedImage.TYPE_INT_ARGB_PRE);
         }
         drawn = false;
     }
 
-    protected BufferedImage getBuffer() {
-        return mBuffer;
+    protected BufferedImage getImage() {
+        BufferedImage tempImg = ImageUtils.createCompatibleBufferedImage(mapDim.width, mapDim.height, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2d = (Graphics2D) tempImg.getGraphics();
+        g2d.setColor(new Color(35, 125, 0));
+        g2d.fillRect(0, 0, tempImg.getWidth(null), tempImg.getHeight(null));
+        g2d.drawImage(mBuffer, 0, 0, null);
+        g2d.dispose();
+        return tempImg;
+    }
+
+    protected BufferedImage getScaledImage(int width, int height) {
+        BufferedImage tempImg = ImageUtils.createCompatibleBufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2d = (Graphics2D) tempImg.getGraphics();
+        g2d.setColor(new Color(35, 125, 0));
+        g2d.fillRect(0, 0, tempImg.getWidth(null), tempImg.getHeight(null));
+        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g2d.drawImage(mBuffer, 0, 0, width, height, 0, 0, mBuffer.getWidth(), mBuffer.getHeight(), null);
+        g2d.dispose();
+        return tempImg;
+    }
+    
+    public boolean drawn() {
+        return drawn;
     }
 
     @Override
@@ -1056,9 +1020,10 @@ class MinimapRepaintThread extends Thread {
             try {
                 if (!drawn) {
                     drawn = redraw();
+                    MinimapZoomFrame.getSingleton().setMinimap(getImage());
                 }
 
-                MinimapPanel.getSingleton().updateComplete(mBuffer);
+                MinimapPanel.getSingleton().updateComplete();
                 try {
                     Thread.sleep(100);
                 } catch (Exception ignored) {
@@ -1081,14 +1046,21 @@ class MinimapRepaintThread extends Thread {
         }
 
         Graphics2D g2d = (Graphics2D) mBuffer.getGraphics();
-        g2d.setColor(new Color(35, 125, 0));
-        g2d.fillRect(0, 0, mBuffer.getWidth(null), mBuffer.getHeight(null));
-        boolean markPlayer = GlobalOptions.getProperties().getBoolean("mark.villages.on.minimap", true);
+        Composite tempC = g2d.getComposite();
+        //clear
+        g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR));
+        g2d.fillRect(0, 0, mBuffer.getWidth(), mBuffer.getHeight());
+
+        //reset composite
+        g2d.setComposite(tempC);
+        
+        
+        boolean markPlayer = GlobalOptions.getProperties().getBoolean("mark.villages.on.minimap");
         if (ServerSettings.getSingleton().getMapDimension() == null) {
             //could not draw minimap if dimensions are not loaded yet
             return false;
         }
-        boolean showBarbarian = GlobalOptions.getProperties().getBoolean("show.barbarian", true);
+        boolean showBarbarian = GlobalOptions.getProperties().getBoolean("show.barbarian");
 
         Color DEFAULT = Constants.DS_DEFAULT_MARKER;
         try {
@@ -1104,8 +1076,9 @@ class MinimapRepaintThread extends Thread {
             DEFAULT = Constants.DS_DEFAULT_MARKER;
         }
 
-        double wField = ServerSettings.getSingleton().getMapDimension().getWidth() / (double) visiblePart.width;
-        double hField = ServerSettings.getSingleton().getMapDimension().getHeight() / (double) visiblePart.height;
+        Rectangle mapDim = ServerSettings.getSingleton().getMapDimension();
+        double wField = mapDim.getWidth() / (double) visiblePart.width;
+        double hField = mapDim.getHeight() / (double) visiblePart.height;
         
         UserProfile profile = GlobalOptions.getSelectedProfile();
         Tribe currentTribe = InvalidTribe.getSingleton();
@@ -1113,8 +1086,8 @@ class MinimapRepaintThread extends Thread {
             currentTribe = profile.getTribe();
         }
 
-        for (int i = visiblePart.x; i < (visiblePart.width + visiblePart.x); i += 3) {
-            for (int j = visiblePart.y; j < (visiblePart.height + visiblePart.y); j += 3) {
+        for (int i = visiblePart.x; i < (visiblePart.width + visiblePart.x); i++) {
+            for (int j = visiblePart.y; j < (visiblePart.height + visiblePart.y); j++) {
                 Village v = mVisibleVillages[i][j];
                 if (v != null) {
                     Color markerColor = null;
@@ -1139,13 +1112,9 @@ class MinimapRepaintThread extends Thread {
                                     marker = MarkerManager.getSingleton().getMarker(v.getTribe().getAlly());
                                     if (marker != null && marker.isShownOnMap()) {
                                         markerColor = marker.getMarkerColor();
-                                    } else {
-                                        markerColor = DEFAULT;
                                     }
                                 } else {
-                                    if (!marker.isShownOnMap()) {
-                                        markerColor = DEFAULT;
-                                    } else {
+                                    if (marker.isShownOnMap()) {
                                         markerColor = marker.getMarkerColor();
                                     }
                                 }
@@ -1161,11 +1130,13 @@ class MinimapRepaintThread extends Thread {
                         } else {
                             g2d.setColor(DEFAULT);
                         }
-                        g2d.fillRect((int) Math.round((i - visiblePart.x) * wField), (int) Math.round((j - visiblePart.y) * hField), 3, 3);
+                        g2d.fillRect((int) Math.round((i - visiblePart.x) * wField), (int) Math.round((j - visiblePart.y) * hField),
+                                (int) Math.floor(wField), (int) Math.floor(hField));
                     } else {
                         if (showBarbarian) {
                             g2d.setColor(Color.LIGHT_GRAY);
-                            g2d.fillRect((int) Math.round((i - visiblePart.x) * wField), (int) Math.round((j - visiblePart.y) * hField), 3, 3);
+                            g2d.fillRect((int) Math.round((i - visiblePart.x) * wField), (int) Math.round((j - visiblePart.y) * hField),
+                                    (int) Math.floor(wField), (int) Math.floor(hField));
                         }
                     }
                 }
@@ -1173,25 +1144,15 @@ class MinimapRepaintThread extends Thread {
         }
 
         try {
-            if (GlobalOptions.getProperties().getBoolean("map.showcontinents", true)) {
+            if (GlobalOptions.getProperties().getBoolean("map.showcontinents")) {
                 g2d.setColor(Color.BLACK);
                 Composite c = g2d.getComposite();
                 Composite a = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.4f);
                 Font f = g2d.getFont();
                 Font t = new Font("Serif", Font.BOLD, (int) Math.round(30 * hField));
-                int coordType = ServerSettings.getSingleton().getCoordType();
-                if (coordType != 2) {
-                    t = new Font("Serif", Font.BOLD, 20);
-                }
                 g2d.setFont(t);
                 int fact = 10;
-                int mid = 50;
-                if (coordType != 2) {
-                    fact = 5;
-                    mid = 25;
-                }
-
-                mid = (int) Math.round(mid * wField);
+                int mid = (int) Math.round(50 * wField);
 
                 for (int i = 0; i < 10; i++) {
                     for (int j = 0; j < 10; j++) {
@@ -1208,10 +1169,6 @@ class MinimapRepaintThread extends Thread {
                         int wk = 100;
                         int hk = 100;
 
-                        if (coordType != 2) {
-                            wk = 50;
-                            hk = 50;
-                        }
                         if (i == 9) {
                             wk -= 1;
                         }

@@ -1,5 +1,7 @@
 # DS Workbench
 
+[![Github Releases (by Release)](https://img.shields.io/github/downloads/Torridity/dsworkbench/3.72/total.svg)](https://github.com/Torridity/dsworkbench/releases/tag/3.72)
+
 DS Workbench is a planning tool for the browser game "Tribal Wars" (http://www.die-staemme.de/).
 It is implemented as desktop application and written mostly in Java. Formerly, this project and
 its releases were hosted at http://www.dsworkbench.de but as of December 24, 2015 this domain
@@ -24,7 +26,7 @@ All *official* releases you can find [here](https://github.com/Torridity/dsworkb
 
 In order to build DS Workbench you'll need:
 
-* Java SE Development Kit 8 or newer
+* OpenJDK 9 or newer
 * Apache Maven 3
 
 After obtaining the sources change to the folder where the sources are located and just call:

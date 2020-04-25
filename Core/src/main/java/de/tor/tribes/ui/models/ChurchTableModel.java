@@ -16,20 +16,26 @@
 package de.tor.tribes.ui.models;
 
 import de.tor.tribes.types.ext.Tribe;
-import de.tor.tribes.types.ext.Village;
-import de.tor.tribes.util.church.ChurchManager;
+import de.tor.tribes.util.village.KnownVillage;
+import de.tor.tribes.util.village.KnownVillageManager;
 import java.awt.Color;
 import javax.swing.table.AbstractTableModel;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  *
  * @author Torridity
+ * @author extremeCrazyCoder
  */
 public class ChurchTableModel extends AbstractTableModel {
+    
+    private static Logger logger = LogManager.getLogger("ChurchTableModel");
 
-    private Class[] types = new Class[]{Tribe.class, Village.class, Integer.class, Color.class};
-    private String[] colNames = new String[]{"Spieler", "Dorf", "Radius", "Farbe"};
-    private boolean[] editableColumns = new boolean[]{false, false, true, false};
+    private final Class[] types = new Class[]{Tribe.class, KnownVillage.class, Integer.class, Color.class};
+    private final String[] colNames = new String[]{"Spieler", "Dorf", "Stufe", "Farbe"};
+    private final boolean[] editableColumns = new boolean[]{false, false, true, false};
 
     @Override
     public int getColumnCount() {
@@ -53,25 +59,25 @@ public class ChurchTableModel extends AbstractTableModel {
 
     @Override
     public int getRowCount() {
-        return ChurchManager.getSingleton().getChurchVillages().size();
+        return KnownVillageManager.getSingleton().getChurchVillages().size();
     }
 
     @Override
     public Object getValueAt(int rowIndex, int columnIndex) {
         try {
-            Village v = ChurchManager.getSingleton().getChurchVillages().get(rowIndex);
+            KnownVillage v = KnownVillageManager.getSingleton().getChurchVillages().get(rowIndex);
             switch (columnIndex) {
                 case 0: {
-                    return v.getTribe();
+                    return v.getVillage().getTribe();
                 }
                 case 1: {
                     return v;
                 }
                 case 2: {
-                    return ChurchManager.getSingleton().getChurch(v).getRange();
+                    return v.getBuildingLevelByName("church");
                 }
                 default: {
-                    return ChurchManager.getSingleton().getChurch(v).getRangeColor();
+                    return v.getRangeColor();
                 }
             }
         } catch (Exception e) {
@@ -81,12 +87,14 @@ public class ChurchTableModel extends AbstractTableModel {
 
     @Override
     public void setValueAt(Object o, int rowIndex, int columnIndex) {
-        Village v = ChurchManager.getSingleton().getChurchVillages().get(rowIndex);
+        KnownVillage v = KnownVillageManager.getSingleton().getChurchVillages().get(rowIndex);
         switch (columnIndex) {
-            default: {
-                ChurchManager.getSingleton().getChurch(v).setRange((Integer) o);
-            }
+            case 2:
+                v.setChurchLevel((Integer) o);
+                break;
+            default:
+                logger.error("Invalid Columnindex " + columnIndex);
         }
-        ChurchManager.getSingleton().revalidate(true);
+        KnownVillageManager.getSingleton().revalidate(true);
     }
 }

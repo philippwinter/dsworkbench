@@ -15,40 +15,44 @@
  */
 package de.tor.tribes.types;
 
-import de.tor.tribes.types.ext.Tribe;
-import de.tor.tribes.types.ext.Village;
 import de.tor.tribes.control.ManageableType;
 import de.tor.tribes.io.DataHolder;
 import de.tor.tribes.io.ServerManager;
 import de.tor.tribes.io.UnitHolder;
+import de.tor.tribes.types.ext.Tribe;
+import de.tor.tribes.types.ext.Village;
 import de.tor.tribes.util.BBSupport;
 import de.tor.tribes.util.GlobalOptions;
 import de.tor.tribes.util.ServerSettings;
 import de.tor.tribes.util.bb.AttackListFormatter;
 import de.tor.tribes.util.support.SOSFormater;
-import de.tor.tribes.util.xml.JaxenUtils;
+import de.tor.tribes.util.xml.JDomUtils;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
-import java.util.Enumeration;
-import java.util.Hashtable;
+import java.util.HashMap;
 import java.util.List;
-import org.jdom.Element;
+import java.util.Set;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jdom2.Element;
 
 /**
  *
  * @author Torridity
  */
 public class SOSRequest extends ManageableType implements BBSupport {
+    
+    private static Logger logger = LogManager.getLogger("SOSManager");
 
     private final String[] VARIABLES = new String[]{"%SOS_ICON%", "%TARGET%", "%ATTACKS%", "%DEFENDERS%", "%WALL_INFO%", "%WALL_LEVEL%", "%FIRST_ATTACK%", "%LAST_ATTACK%", "%SOURCE_LIST%", "%SOURCE_DATE_TYPE_LIST%", "%ATTACK_LIST%", "%SOURCE_DATE_LIST%", "%SOURCE_TYPE_LIST%", "%SUMMARY%"};
     private final static String STANDARD_TEMPLATE = "[quote]%SOS_ICON% %TARGET% (%ATTACKS%)\n[quote]%DEFENDERS%\n%WALL_INFO%[/quote]\n\n%FIRST_ATTACK%\n%SOURCE_DATE_LIST%\n%LAST_ATTACK%\n\n%SUMMARY%[/quote]";
     private Tribe mDefender = null;
-    private Hashtable<Village, TargetInformation> targetInformations = null;
-    private Hashtable<Village, DefenseInformation> defenseInformations = null;
+    private HashMap<Village, TargetInformation> targetInformations = null;
+    private HashMap<Village, DefenseInformation> defenseInformations = null;
 
     @Override
     public String[] getBBVariables() {
@@ -157,9 +161,9 @@ public class SOSRequest extends ManageableType implements BBSupport {
         String offRow = "";
 
         for (UnitHolder unit : DataHolder.getSingleton().getUnits()) {
-            Integer amount = pTargetInfo.getTroops().get(unit);
-            if (amount != null && amount != 0) {
-                if (unit.getPlainName().equals("spear") || unit.getPlainName().equals("sword") || unit.getPlainName().equals("archer") || unit.getPlainName().equals("spy") || unit.getPlainName().equals("heavy") || unit.getPlainName().equals("knight")) {
+            int amount = pTargetInfo.getTroops().getAmountForUnit(unit);
+            if (amount > 0) {
+                if (unit.isDefense()) {
                     defRow += unit.toBBCode() + " " + nf.format(amount) + " ";
                 } else {
                     offRow += unit.toBBCode() + " " + nf.format(amount) + " ";
@@ -198,7 +202,7 @@ public class SOSRequest extends ManageableType implements BBSupport {
 
     @Override
     public String[] getReplacements(boolean pExtended) {
-        return getReplacementsForTarget(targetInformations.keys().nextElement(), pExtended);
+        return getReplacementsForTarget((Village) targetInformations.keySet().toArray()[0], pExtended);
     }
 
     @Override
@@ -207,8 +211,8 @@ public class SOSRequest extends ManageableType implements BBSupport {
     }
 
     public SOSRequest() {
-        targetInformations = new Hashtable<>();
-        defenseInformations = new Hashtable<>();
+        targetInformations = new HashMap<>();
+        defenseInformations = new HashMap<>();
     }
 
     public SOSRequest(Tribe pDefender) {
@@ -245,9 +249,7 @@ public class SOSRequest extends ManageableType implements BBSupport {
     }
 
     public void resetDefenses() {
-        Enumeration<Village> targets = getTargets();
-        while (targets.hasMoreElements()) {
-            Village target = targets.nextElement();
+        for(Village target: getTargets()) {
             DefenseInformation info = getDefenseInformation(target);
             info.reset();
         }
@@ -267,8 +269,9 @@ public class SOSRequest extends ManageableType implements BBSupport {
         defenseInformations.remove(pTarget);
     }
 
-    public Enumeration<Village> getTargets() {
-        return targetInformations.keys();
+    //TODO find a new way for that
+    public Set<Village> getTargets() {
+        return targetInformations.keySet();
     }
 
     public String toBBCode() {
@@ -277,9 +280,7 @@ public class SOSRequest extends ManageableType implements BBSupport {
 
     public String toBBCode(boolean pDetailed) {
         StringBuilder buffer = new StringBuilder();
-        Enumeration<Village> targets = getTargets();
-        while (targets.hasMoreElements()) {
-            Village target = targets.nextElement();
+        for(Village target: getTargets()) {
             TargetInformation targetInfo = getTargetInformation(target);
             buffer.append(SOSFormater.format(target, targetInfo, pDetailed));
             buffer.append("\n\n");
@@ -301,21 +302,22 @@ public class SOSRequest extends ManageableType implements BBSupport {
         if (mDefender == null || pOther == null || pOther.getDefender() == null || mDefender.getId() != pOther.getDefender().getId()) {
             throw new IllegalArgumentException("Cannot merge with unequal defender");
         }
-
-        Enumeration<Village> otherTargets = pOther.getTargets();
-        while (otherTargets.hasMoreElements()) {
-            Village otherTarget = otherTargets.nextElement();
+        
+        logger.debug("Starting merge for {}", mDefender.getName());
+        for(Village otherTarget: pOther.getTargets()) {
             TargetInformation otherInfo = pOther.getTargetInformation(otherTarget);
             TargetInformation thisInfo = addTarget(otherTarget);
             thisInfo.setDelta(0);
             thisInfo.setWallLevel(otherInfo.getWallLevel());
             int addCount = 0;
             for (TimedAttack att : otherInfo.getAttacks()) {
-                if (thisInfo.addAttack(att.getSource(), new Date(att.getlArriveTime()))) {
+                if (thisInfo.addAttack(att.getSource(), new Date(att.getlArriveTime()),
+                        att.getUnit(), att.isPossibleFake(), att.isPossibleSnob())) {
                     addCount++;
                     getDefenseInformation(otherTarget).setAnalyzed(false);
                 }
             }
+            logger.debug("Got delta of {} for Village {}", addCount, otherTarget.getCoordAsString());
             thisInfo.setDelta(addCount);
         }
     }
@@ -323,10 +325,7 @@ public class SOSRequest extends ManageableType implements BBSupport {
     @Override
     public String toString() {
         String result = "Verteidiger: " + mDefender + "\n";
-        Enumeration<Village> targets = getTargets();
-
-        while (targets.hasMoreElements()) {
-            Village target = targets.nextElement();
+        for(Village target: getTargets()) {
             result += " Ziel: " + target + "\n";
             result += getTargetInformation(target);
             //result += "\n";
@@ -336,73 +335,46 @@ public class SOSRequest extends ManageableType implements BBSupport {
     }
 
     @Override
-    public String getElementIdentifier() {
-        return "sosRequest";
-    }
-
-    @Override
-    public String getElementGroupIdentifier() {
-        return "sosRequests";
-    }
-
-    @Override
-    public String getGroupNameAttributeIdentifier() {
-        return "";
-    }
-
-    @Override
-    public String toXml() {
+    public Element toXml(String elementName) {
+        Element request = new Element(elementName);
+        
         try {
-            StringBuilder b = new StringBuilder();
-            b.append("<").append(getElementIdentifier()).append(" defender=\"").append(mDefender.getId()).append("\">\n");
-            b.append("<targetInformations>\n");
-            Enumeration<Village> targetKeys = getTargets();
-            while (targetKeys.hasMoreElements()) {
-                Village target = targetKeys.nextElement();
+            request.setAttribute("defender", Integer.toString(mDefender.getId()));
+            
+            Element targetInfos = new Element("targetInformations");
+            for(Village target: getTargets()) {
                 TargetInformation targetInfo = getTargetInformation(target);
                 if (targetInfo != null) {
-                    b.append("<targetInformation target=\"").append(target.getId()).append("\">\n");
-                    b.append(targetInfo.toXml());
-                    b.append("</targetInformation>\n");
+                    targetInfos.addContent(targetInfo.toXml("targetInformation"));
                 }
             }
-            b.append("</targetInformations>\n");
-            b.append("<defenseInformations>\n");
-            targetKeys = getTargets();
-            while (targetKeys.hasMoreElements()) {
-                Village target = targetKeys.nextElement();
+            request.addContent(targetInfos);
+            
+            Element defInfos = new Element("defenseInformations");
+            for(Village target: getTargets()) {
                 DefenseInformation defense = getDefenseInformation(target);
                 if (defense != null) {
-                    b.append("<defenseInformation target=\"").
-                            append(target.getId()).
-                            append("\" analyzed=\"").
-                            append(defense.isAnalyzed()).
-                            append("\" ignored=\"").
-                            append(defense.isIgnored()).append("\">\n");
-                    b.append(defense.toXml());
-                    b.append("</defenseInformation>\n");
+                    defInfos.addContent(defense.toXml("defenseInformation"));
                 }
             }
-            b.append("</defenseInformations>\n");
-            b.append("</").append(getElementIdentifier()).append(">");
-            return b.toString();
+            request.addContent(defInfos);
         } catch (Throwable t) {
             //getting xml data failed
         }
-        return null;
+        return request;
     }
 
     @Override
     public void loadFromXml(Element e) {
         int defenderId = Integer.parseInt(e.getAttributeValue("defender"));
         mDefender = DataHolder.getSingleton().getTribes().get(defenderId);
-        for (Element targetInfo : (List<Element>) JaxenUtils.getNodes(e, "targetInformations/targetInformation")) {
+        for (Element targetInfo : (List<Element>) JDomUtils.getNodes(e, "targetInformations/targetInformation")) {
             int targetId = Integer.parseInt(targetInfo.getAttributeValue("target"));
             Village target = DataHolder.getSingleton().getVillagesById().get(targetId);
             addTarget(target);
             getTargetInformation(target).loadFromXml(targetInfo);
         }
-        for (Element defenseInfo : (List<Element>) JaxenUtils.getNodes(e, "defenseInformations/defenseInformation")) {
+        for (Element defenseInfo : (List<Element>) JDomUtils.getNodes(e, "defenseInformations/defenseInformation")) {
             int targetId = Integer.parseInt(defenseInfo.getAttributeValue("target"));
             boolean analyzed = Boolean.parseBoolean(defenseInfo.getAttributeValue("analyzed"));
             boolean ignored = Boolean.parseBoolean(defenseInfo.getAttributeValue("ignored"));

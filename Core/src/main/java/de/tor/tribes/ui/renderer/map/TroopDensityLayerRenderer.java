@@ -141,7 +141,7 @@ public class TroopDensityLayerRenderer extends AbstractBufferedLayerRenderer {
         ImageUtils.setupGraphics(g2d);
         //iterate through entire row
         int cnt = 0;
-        boolean includeSupport = GlobalOptions.getProperties().getBoolean("include.support", true);
+        boolean includeSupport = GlobalOptions.getProperties().getBoolean("include.support");
         for (int x = firstCol; x < firstCol + Math.abs(pSettings.getColumnsToRender()); x++) {
             for (int y = 0; y < pSettings.getVillagesInY(); y++) {
                 cnt++;
@@ -172,7 +172,7 @@ public class TroopDensityLayerRenderer extends AbstractBufferedLayerRenderer {
         int lastVillageCol = 0;
 
         Village currentMouseVillage = MapPanel.getSingleton().getVillageAtMousePos();
-        boolean includeSupport = GlobalOptions.getProperties().getBoolean("include.support", true);
+        boolean includeSupport = GlobalOptions.getProperties().getBoolean("include.support");
 
         for (int x = 0; x < pSettings.getVillagesInX(); x++) {
             //iterate from first row for 'pRows' times
@@ -200,22 +200,22 @@ public class TroopDensityLayerRenderer extends AbstractBufferedLayerRenderer {
         if (pIncludeSupport) {
             holder = TroopsManager.getSingleton().getTroopsForVillage(v);
             if (holder != null) {
-                defIn = holder.getDefValue();
+                defIn = holder.getTroops().getDefValue();
             }
             holder = TroopsManager.getSingleton().getTroopsForVillage(v, TroopsManager.TROOP_TYPE.OWN);
             if (holder != null) {
-                defOwn = holder.getDefValue();
+                defOwn = holder.getTroops().getDefValue();
             }
         } else {
             holder = TroopsManager.getSingleton().getTroopsForVillage(v, TroopsManager.TROOP_TYPE.OWN);
             if (holder != null) {
-                defIn = holder.getDefValue();
+                defIn = holder.getTroops().getDefValue();
                 defOwn = defIn;
             }
         }
 
         if (v != null && v.isVisibleOnMap() && (defIn != 0 || defOwn != 0)) {
-            int maxDef = GlobalOptions.getProperties().getInt("max.density.troops", 65000);
+            int maxDef = GlobalOptions.getProperties().getInt("max.density.troops");
             double percOfMax = defIn / maxDef;
             double percFromOthers = (defIn - defOwn) / defIn;
             double half = (double) maxDef / 2.0;
@@ -303,10 +303,10 @@ class TroopAnimator {
         }
         VillageTroopsHolder holder = null;
         if (v != null && (holder = TroopsManager.getSingleton().getTroopsForVillage(v)) != null) {
-            double offValue = holder.getOffValue();
-            double defArchValue = holder.getDefArcherValue();
-            double defCavValue = holder.getDefCavalryValue();
-            double defValue = holder.getDefValue();
+            double offValue = holder.getTroops().getOffValue();
+            double defArchValue = holder.getTroops().getDefArcherValue();
+            double defCavValue = holder.getTroops().getDefCavalryValue();
+            double defValue = holder.getTroops().getDefValue();
 
             double fightValueIn = offValue + defValue + defArchValue + defCavValue;
             int centerX = (int) Math.floor((double) col * pFieldWidth + pFieldWidth / 2.0 - 16 + pDx);

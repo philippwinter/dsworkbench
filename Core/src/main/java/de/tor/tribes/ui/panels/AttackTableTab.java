@@ -17,6 +17,8 @@ package de.tor.tribes.ui.panels;
 
 import de.tor.tribes.control.ManageableType;
 import de.tor.tribes.io.DataHolder;
+import de.tor.tribes.io.ServerManager;
+import de.tor.tribes.io.TroopAmountElement;
 import de.tor.tribes.io.UnitHolder;
 import de.tor.tribes.types.Attack;
 import de.tor.tribes.types.UserProfile;
@@ -37,19 +39,6 @@ import de.tor.tribes.util.attack.StandardAttackManager;
 import de.tor.tribes.util.bb.AttackListFormatter;
 import de.tor.tribes.util.html.AttackPlanHTMLExporter;
 import de.tor.tribes.util.js.AttackScriptWriter;
-import org.apache.log4j.Logger;
-import org.jdesktop.swingx.JXTable;
-import org.jdesktop.swingx.decorator.*;
-import org.jdesktop.swingx.painter.AbstractLayoutPainter.HorizontalAlignment;
-import org.jdesktop.swingx.painter.AbstractLayoutPainter.VerticalAlignment;
-import org.jdesktop.swingx.painter.ImagePainter;
-import org.jdesktop.swingx.painter.MattePainter;
-import org.jdesktop.swingx.table.TableColumnExt;
-
-import javax.swing.*;
-import javax.swing.event.*;
-import javax.swing.table.TableColumn;
-import javax.swing.table.TableModel;
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
@@ -66,6 +55,19 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.List;
 import java.util.regex.Matcher;
+import javax.swing.*;
+import javax.swing.event.*;
+import javax.swing.table.TableColumn;
+import javax.swing.table.TableModel;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jdesktop.swingx.JXTable;
+import org.jdesktop.swingx.decorator.*;
+import org.jdesktop.swingx.painter.AbstractLayoutPainter.HorizontalAlignment;
+import org.jdesktop.swingx.painter.AbstractLayoutPainter.VerticalAlignment;
+import org.jdesktop.swingx.painter.ImagePainter;
+import org.jdesktop.swingx.painter.MattePainter;
+import org.jdesktop.swingx.table.TableColumnExt;
 
 /**
  *
@@ -73,11 +75,10 @@ import java.util.regex.Matcher;
  */
 public class AttackTableTab extends javax.swing.JPanel implements ListSelectionListener {
 
-    private static Logger logger = Logger.getLogger("AttackTableTab");
+    private static Logger logger = LogManager.getLogger("AttackTableTab");
 
     public enum TRANSFER_TYPE {
-
-        CLIPBOARD_PLAIN, CLIPBOARD_BB, FILE_HTML, FILE_TEXT, FILE_GM, BROWSER_IGM, DSWB_RETIME, SELECTION_TOOL, BROWSER_LINK, CUT_TO_INTERNAL_CLIPBOARD, COPY_TO_INTERNAL_CLIPBOARD, FROM_INTERNAL_CLIPBOARD
+        CLIPBOARD_PLAIN, CLIPBOARD_BB, FILE_HTML, FILE_TEXT, FILE_GM, DSWB_RETIME, SELECTION_TOOL, BROWSER_LINK, CUT_TO_INTERNAL_CLIPBOARD, COPY_TO_INTERNAL_CLIPBOARD, FROM_INTERNAL_CLIPBOARD
     }
     private String sAttackPlan = null;
     private final static JXTable jxAttackTable = new JXTable();
@@ -90,29 +91,30 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
 
     static {
         jxAttackTable.setRowHeight(24);
-        HighlightPredicate.ColumnHighlightPredicate colu = new HighlightPredicate.ColumnHighlightPredicate(0, 1, 2, 3, 4, 5, 6, 7, 11, 12);
-
-        jxAttackTable.setHighlighters(new CompoundHighlighter(colu, HighlighterFactory.createAlternateStriping(Constants.DS_ROW_A, Constants.DS_ROW_B)));
+        jxAttackTable.setHighlighters(new CompoundHighlighter(HighlighterFactory.createSimpleStriping(), HighlighterFactory.createAlternateStriping(Constants.DS_ROW_A, Constants.DS_ROW_B)));
         jxAttackTable.setColumnControlVisible(true);
+        jxAttackTable.getTableHeader().setDefaultRenderer(new UnitTableHeaderRenderer());
         jxAttackTable.setDefaultEditor(Village.class, new VillageCellEditor());
         jxAttackTable.setDefaultEditor(UnitHolder.class, new UnitCellEditor());
         jxAttackTable.setDefaultRenderer(UnitHolder.class, new UnitCellRenderer());
-        jxAttackTable.setDefaultRenderer(Integer.class, new NoteIconCellRenderer(NoteIconCellRenderer.ICON_TYPE.NOTE));
         jxAttackTable.setDefaultRenderer(Long.class, new ColoredCoutdownCellRenderer());
         jxAttackTable.setDefaultRenderer(Date.class, new ColoredDateCellRenderer());
         jxAttackTable.setDefaultEditor(Date.class, new DateSpinEditor());
+        jxAttackTable.setDefaultRenderer(Integer.class, new NoteIconCellRenderer(NoteIconCellRenderer.ICON_TYPE.NOTE));
         jxAttackTable.setDefaultEditor(Integer.class, new NoteIconCellEditor(NoteIconCellEditor.ICON_TYPE.NOTE));
+        jxAttackTable.setDefaultRenderer(TroopAmountElement.class, new StandardAttackTypeCellRenderer());
+        jxAttackTable.setDefaultEditor(TroopAmountElement.class, new StandardAttackElementEditor());
 
         attackModel = new AttackTableModel(AttackManager.DEFAULT_GROUP);
 
         jxAttackTable.setModel(attackModel);
         TableColumnExt drawCol = jxAttackTable.getColumnExt("Einzeichnen");
-        drawCol.setCellRenderer(new DrawNotDrawCellRenderer());
-        drawCol.setCellEditor(new DrawNotDrawEditor());
+        drawCol.setCellRenderer(new CustomBooleanRenderer(CustomBooleanRenderer.LayoutStyle.DRAW_NOTDRAW));
+        drawCol.setCellEditor(new CustomCheckBoxEditor(CustomBooleanRenderer.LayoutStyle.DRAW_NOTDRAW));
         TableColumnExt transferCol = jxAttackTable.getColumnExt("Übertragen");
-        transferCol.setCellRenderer(new SentNotSentCellRenderer());
-        transferCol.setCellEditor(new SentNotSentEditor());
-
+        transferCol.setCellRenderer(new CustomBooleanRenderer(CustomBooleanRenderer.LayoutStyle.SENT_NOTSENT));
+        transferCol.setCellEditor(new CustomCheckBoxEditor(CustomBooleanRenderer.LayoutStyle.SENT_NOTSENT));
+        
         BufferedImage back = ImageUtils.createCompatibleBufferedImage(5, 5, BufferedImage.BITMASK);
         Graphics2D g = back.createGraphics();
         GeneralPath p = new GeneralPath();
@@ -123,7 +125,7 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
         g.setColor(Color.GREEN.darker());
         g.fill(p);
         g.dispose();
-
+        
         jxAttackTable.addHighlighter(new PainterHighlighter(HighlightPredicate.EDITABLE, new ImagePainter(back, HorizontalAlignment.RIGHT, VerticalAlignment.TOP)));
     }
 
@@ -177,14 +179,19 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
         }
         jxAttackTable.getSelectionModel().addListSelectionListener(AttackTableTab.this);
         jDateField.setDate(new Date());
-        jShowAttacksInVillageInfo.setSelected(GlobalOptions.getProperties().getBoolean("attack.script.attacks.in.village.info", true));
-        jShowAttacksOnConfirmPage.setSelected(GlobalOptions.getProperties().getBoolean("attack.script.attacks.on.confirm.page", true));
-        jShowAttacksInPlace.setSelected(GlobalOptions.getProperties().getBoolean("attack.script.attacks.in.place", true));
-        jShowAttacksInOverview.setSelected(GlobalOptions.getProperties().getBoolean("attack.script.attacks.in.overview", true));
+        jShowAttacksInVillageInfo.setSelected(GlobalOptions.getProperties().getBoolean("attack.script.attacks.in.village.info"));
+        jShowAttacksOnConfirmPage.setSelected(GlobalOptions.getProperties().getBoolean("attack.script.attacks.on.confirm.page"));
+        jShowAttacksInPlace.setSelected(GlobalOptions.getProperties().getBoolean("attack.script.attacks.in.place"));
+        jShowAttacksInOverview.setSelected(GlobalOptions.getProperties().getBoolean("attack.script.attacks.in.overview"));
         jTimeChangeDialog.pack();
-        jSendAttacksIGMDialog.pack();
         jChangeAttackTypeDialog.pack();
         jScriptExportDialog.pack();
+    }
+
+    public void setup() {
+        attackModel = new AttackTableModel(AttackManager.DEFAULT_GROUP);
+
+        jxAttackTable.setModel(attackModel);
     }
 
     public void deregister() {
@@ -307,7 +314,6 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
         UIHelper.initTableColums(jxAttackTable, "Einheit", "Typ", "Übertragen", "Einzeichnen");
 
         jScrollPane1.setViewportView(jxAttackTable);
-        jxAttackTable.getTableHeader().setDefaultRenderer(new DefaultTableHeaderRenderer());
         updateSortHighlighter();
     }
 
@@ -384,13 +390,6 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
         jShowAttacksInOverview = new javax.swing.JCheckBox();
         jDoScriptExportButton = new javax.swing.JButton();
         jButton14 = new javax.swing.JButton();
-        jSendAttacksIGMDialog = new javax.swing.JDialog();
-        jLabel20 = new javax.swing.JLabel();
-        jSubject = new javax.swing.JTextField();
-        jLabel22 = new javax.swing.JLabel();
-        jAPIKey = new javax.swing.JTextField();
-        jSendButton = new javax.swing.JButton();
-        jButton13 = new javax.swing.JButton();
         jTimeChangeDialog = new javax.swing.JDialog();
         jOKButton = new javax.swing.JButton();
         jCancelButton = new javax.swing.JButton();
@@ -439,19 +438,15 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
 
         jShowAttacksInVillageInfo.setSelected(true);
         jShowAttacksInVillageInfo.setText("Befehle in den Dorfinformationen anzeigen");
-        jShowAttacksInVillageInfo.setOpaque(false);
 
         jShowAttacksOnConfirmPage.setSelected(true);
         jShowAttacksOnConfirmPage.setText("Befehle auf der Befehlsbestätigungsseite anzeigen");
-        jShowAttacksOnConfirmPage.setOpaque(false);
 
         jShowAttacksInPlace.setSelected(true);
         jShowAttacksInPlace.setText("Befehle im Versammlungsplatz anzeigen");
-        jShowAttacksInPlace.setOpaque(false);
 
         jShowAttacksInOverview.setSelected(true);
         jShowAttacksInOverview.setText("Befehle in den Übersichten anzeigen");
-        jShowAttacksInOverview.setOpaque(false);
 
         jDoScriptExportButton.setText("Script erstellen");
         jDoScriptExportButton.addMouseListener(new java.awt.event.MouseAdapter() {
@@ -481,7 +476,7 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
                         .addComponent(jButton14)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addComponent(jDoScriptExportButton))
-                    .addComponent(jShowAttacksOnConfirmPage, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, 327, Short.MAX_VALUE)
+                    .addComponent(jShowAttacksOnConfirmPage, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.PREFERRED_SIZE, 327, Short.MAX_VALUE)
                     .addComponent(jShowAttacksInVillageInfo, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, 327, Short.MAX_VALUE))
                 .addContainerGap())
         );
@@ -501,63 +496,6 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
                     .addComponent(jDoScriptExportButton)
                     .addComponent(jButton14))
                 .addContainerGap())
-        );
-
-        jLabel20.setText("Betreff");
-
-        jLabel22.setText("API-Key");
-
-        jSendButton.setText("IGMs senden");
-        jSendButton.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mouseReleased(java.awt.event.MouseEvent evt) {
-                fireSendIGMsEvent(evt);
-            }
-        });
-
-        jButton13.setText("Abbrechen");
-        jButton13.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mouseReleased(java.awt.event.MouseEvent evt) {
-                fireSendIGMsEvent(evt);
-            }
-        });
-
-        javax.swing.GroupLayout jSendAttacksIGMDialogLayout = new javax.swing.GroupLayout(jSendAttacksIGMDialog.getContentPane());
-        jSendAttacksIGMDialog.getContentPane().setLayout(jSendAttacksIGMDialogLayout);
-        jSendAttacksIGMDialogLayout.setHorizontalGroup(
-            jSendAttacksIGMDialogLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jSendAttacksIGMDialogLayout.createSequentialGroup()
-                .addContainerGap()
-                .addGroup(jSendAttacksIGMDialogLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(jSendAttacksIGMDialogLayout.createSequentialGroup()
-                        .addGroup(jSendAttacksIGMDialogLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jLabel20)
-                            .addComponent(jLabel22))
-                        .addGap(18, 18, 18)
-                        .addGroup(jSendAttacksIGMDialogLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                            .addComponent(jAPIKey, javax.swing.GroupLayout.DEFAULT_SIZE, 334, Short.MAX_VALUE)
-                            .addComponent(jSubject, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, 334, Short.MAX_VALUE)))
-                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jSendAttacksIGMDialogLayout.createSequentialGroup()
-                        .addComponent(jButton13)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jSendButton)))
-                .addContainerGap())
-        );
-        jSendAttacksIGMDialogLayout.setVerticalGroup(
-            jSendAttacksIGMDialogLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jSendAttacksIGMDialogLayout.createSequentialGroup()
-                .addContainerGap()
-                .addGroup(jSendAttacksIGMDialogLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(jLabel20)
-                    .addComponent(jSubject, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(jSendAttacksIGMDialogLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(jLabel22)
-                    .addComponent(jAPIKey, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(jSendAttacksIGMDialogLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(jSendButton)
-                    .addComponent(jButton13))
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
 
         jTimeChangeDialog.setTitle("Zeiten ändern");
@@ -726,7 +664,6 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
 
         buttonGroup2.add(jModifyArrivalOption);
         jModifyArrivalOption.setText("Ankunftzeit angleichen");
-        jModifyArrivalOption.setOpaque(false);
         jModifyArrivalOption.addItemListener(new java.awt.event.ItemListener() {
             public void itemStateChanged(java.awt.event.ItemEvent evt) {
                 fireModifyTimeEvent(evt);
@@ -736,7 +673,6 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
         buttonGroup2.add(jMoveTimeOption);
         jMoveTimeOption.setSelected(true);
         jMoveTimeOption.setText("Verschieben");
-        jMoveTimeOption.setOpaque(false);
         jMoveTimeOption.addItemListener(new java.awt.event.ItemListener() {
             public void itemStateChanged(java.awt.event.ItemEvent evt) {
                 fireModifyTimeEvent(evt);
@@ -745,7 +681,6 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
 
         buttonGroup2.add(jRandomizeOption);
         jRandomizeOption.setText("Zufällig verschieben");
-        jRandomizeOption.setOpaque(false);
         jRandomizeOption.addItemListener(new java.awt.event.ItemListener() {
             public void itemStateChanged(java.awt.event.ItemEvent evt) {
                 fireModifyTimeEvent(evt);
@@ -807,7 +742,6 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
         jNotRandomToNightBonus.setText("Nicht in Nachtbonus verschieben");
         jNotRandomToNightBonus.setToolTipText("DS Workbench sorgt dafür, dass Befehle nicht im Nachtbonus landen");
         jNotRandomToNightBonus.setEnabled(false);
-        jNotRandomToNightBonus.setOpaque(false);
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
         gridBagConstraints.gridy = 1;
@@ -820,7 +754,6 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
 
         buttonGroup2.add(jModifySendOption);
         jModifySendOption.setText("Abschickzeit angleichen");
-        jModifySendOption.setOpaque(false);
         jModifySendOption.addItemListener(new java.awt.event.ItemListener() {
             public void itemStateChanged(java.awt.event.ItemEvent evt) {
                 fireModifyTimeEvent(evt);
@@ -906,7 +839,6 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
 
         jAdeptTypeBox.setSelected(true);
         jAdeptTypeBox.setText("Typ angleichen");
-        jAdeptTypeBox.setOpaque(false);
         jAdeptTypeBox.addChangeListener(new javax.swing.event.ChangeListener() {
             public void stateChanged(javax.swing.event.ChangeEvent evt) {
                 jAdeptTypeBoxfireEnableDisableAdeptTypeEvent(evt);
@@ -920,7 +852,6 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
         jChangeAttackTypeDialog.getContentPane().add(jAdeptTypeBox, gridBagConstraints);
 
         jAdeptUnitBox.setText("Einheit angleichen");
-        jAdeptUnitBox.setOpaque(false);
         jAdeptUnitBox.addChangeListener(new javax.swing.event.ChangeListener() {
             public void stateChanged(javax.swing.event.ChangeEvent evt) {
                 jAdeptUnitBoxfireEnableDisableChangeUnitEvent(evt);
@@ -1032,13 +963,6 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
         jScriptExportDialog.setVisible(false);
     }//GEN-LAST:event_fireDoExportAsScriptEvent
 
-    private void fireSendIGMsEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireSendIGMsEvent
-        if (evt.getSource() == jSendButton) {
-            actionListener.actionPerformed(new ActionEvent(this, 0, "SendIGM"));
-        }
-        jSendAttacksIGMDialog.setVisible(false);
-}//GEN-LAST:event_fireSendIGMsEvent
-
     private void fireCloseTimeChangeDialogEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireCloseTimeChangeDialogEvent
         if (evt.getSource() == jOKButton) {
             actionListener.actionPerformed(new ActionEvent(this, 0, "TimeChange"));
@@ -1122,12 +1046,10 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
     private javax.swing.ButtonGroup buttonGroup1;
     private javax.swing.ButtonGroup buttonGroup2;
     private org.jdesktop.swingx.JXCollapsiblePane infoPanel;
-    private static javax.swing.JTextField jAPIKey;
     private static javax.swing.JButton jAcceptChangeUnitTypeButton;
     private static javax.swing.JComboBox jAdaptTypeBox;
     private static javax.swing.JCheckBox jAdeptTypeBox;
     private static javax.swing.JCheckBox jAdeptUnitBox;
-    private static javax.swing.JButton jButton13;
     private static javax.swing.JButton jButton14;
     private static javax.swing.JButton jButton15;
     private static javax.swing.JButton jCancelButton;
@@ -1141,8 +1063,6 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
     private javax.swing.JLabel jLabel17;
     private javax.swing.JLabel jLabel18;
     private javax.swing.JLabel jLabel19;
-    private javax.swing.JLabel jLabel20;
-    private javax.swing.JLabel jLabel22;
     private javax.swing.JLabel jLabel5;
     private javax.swing.JLabel jLabel6;
     private javax.swing.JLabel jLabel7;
@@ -1163,13 +1083,10 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JScrollPane jScrollPane2;
     private static javax.swing.JSpinner jSecondsField;
-    private static javax.swing.JDialog jSendAttacksIGMDialog;
-    private static javax.swing.JButton jSendButton;
     private static javax.swing.JCheckBox jShowAttacksInOverview;
     private static javax.swing.JCheckBox jShowAttacksInPlace;
     private static javax.swing.JCheckBox jShowAttacksInVillageInfo;
     private static javax.swing.JCheckBox jShowAttacksOnConfirmPage;
-    private static javax.swing.JTextField jSubject;
     private static javax.swing.JDialog jTimeChangeDialog;
     private static javax.swing.JComboBox jTypeComboBox;
     private org.jdesktop.swingx.JXLabel jUnconfiguredTypeWarning;
@@ -1289,31 +1206,13 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
         for (Attack attack : getSelectedAttacks()) {
             if (newType != -2) {
                 attack.setType(newType);
+                attack.setTroopsByType();
             }
             if (newUnit != null) {
                 attack.setUnit(newUnit);
             }
         }
         attackModel.fireTableDataChanged();
-    }
-
-    public void fireSendIGMEvent() {
-        String subject = jSubject.getText();
-        String apiKey = jAPIKey.getText().trim();
-        AttackIGMSender.SenderResult result = AttackIGMSender.sendAttackNotifications(getSelectedAttacks(), subject, apiKey);
-        switch (result.getCode()) {
-            case AttackIGMSender.ID_ERROR_WHILE_SUBMITTING:
-                // JOptionPaneHelper.showErrorBox(jSendAttacksIGMDialog, result.getMessage(), "Fehler");
-                showError(result.getMessage());
-                break;
-            case AttackIGMSender.ID_TOO_MANY_IGMS_PER_TRIBE:
-                //JOptionPaneHelper.showWarningBox(jSendAttacksIGMDialog, result.getMessage(), "Warnung");
-                showError(result.getMessage());
-                break;
-            default:
-                //JOptionPaneHelper.showInformationBox(jSendAttacksIGMDialog, result.getMessage(), "Information");
-                showSuccess(result.getMessage());
-        }
     }
 
     public void fireExportScriptEvent() {
@@ -1349,8 +1248,7 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
         List<Attack> toRemove = new LinkedList<>();
         for (ManageableType t : elements) {
             Attack a = (Attack) t;
-            long sendTime = a.getArriveTime().getTime() - ((long) DSCalculator.calculateMoveTimeInSeconds(a.getSource(), a.getTarget(), a.getUnit().getSpeed()) * 1000);
-            if (sendTime < System.currentTimeMillis()) {
+            if (a.getSendTime().getTime() < System.currentTimeMillis()) {
                 toRemove.add(a);
             }
         }
@@ -1492,10 +1390,13 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
                 copyBBToExternalClipboardEvent();
                 break;
             case BROWSER_LINK:
-                sendAttacksToBrowser();
-                break;
-            case BROWSER_IGM:
-                sendAttacksAsIGM();
+                //use own thread against blocking of render thread
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        sendAttacksToBrowser();
+                    }
+                }).start();
                 break;
             case FILE_HTML:
                 copyHTMLToFileEvent();
@@ -1545,27 +1446,44 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
                 showInfo("Keine Befehle ausgewählt");
                 return;
             }
-            boolean extended = (JOptionPaneHelper.showQuestionConfirmBox(this, "Erweiterte BB-Codes verwenden (nur für Forum und Notizen geeignet)?", "Erweiterter BB-Code", "Nein", "Ja") == JOptionPane.YES_OPTION);
-
+            int answer = JOptionPaneHelper.showQuestionThreeChoicesBox(this, "Welcher BB-Codes Typ soll verwendet werden?\n(Erweiterte BB-Codes sind nur für das Forum und die Notizen geeignet)", "Erweiterter BB-Code", "Normal", "IGM", "Erweitert");
+            
             StringBuilder buffer = new StringBuilder();
-            if (extended) {
-                buffer.append("[u][size=12]Geplante Befehle[/size][/u]\n\n");
-            } else {
-                buffer.append("[u]Geplante Befehle[/u]\n\n");
-            }
-
-            buffer.append(new AttackListFormatter().formatElements(attacks, extended));
-
-            if (extended) {
-                buffer.append("\n[size=8]Erstellt am ");
-                buffer.append(new SimpleDateFormat("dd.MM.yy 'um' HH:mm:ss").format(Calendar.getInstance().getTime()));
-                buffer.append(" mit DS Workbench ");
-                buffer.append(Constants.VERSION).append(Constants.VERSION_ADDITION + "[/size]\n");
-            } else {
-                buffer.append("\nErstellt am ");
-                buffer.append(new SimpleDateFormat("dd.MM.yy 'um' HH:mm:ss").format(Calendar.getInstance().getTime()));
-                buffer.append(" mit DS Workbench ");
-                buffer.append(Constants.VERSION).append(Constants.VERSION_ADDITION + "\n");
+            switch (answer) {
+                case JOptionPane.YES_OPTION:
+                    //IGM
+                    buffer.append("[u]Geplante Befehle[/u]\n\n");
+                    String sUrl = ServerManager.getServerURL(GlobalOptions.getSelectedServer()) + "/";
+                    for (Attack a : attacks) {
+                        buffer.append(AttackToBBCodeFormater.formatAttack(a, sUrl, false));
+                    }
+                    
+                    buffer.append("\nErstellt am ");
+                    buffer.append(new SimpleDateFormat("dd.MM.yy 'um' HH:mm:ss").format(Calendar.getInstance().getTime()));
+                    buffer.append(" mit DS Workbench ");
+                    buffer.append(Constants.VERSION).append(Constants.VERSION_ADDITION + "\n");
+                    break;
+                case JOptionPane.CANCEL_OPTION:
+                    //Erweitert
+                    buffer.append("[u][size=12]Geplante Befehle[/size][/u]\n\n");
+                    buffer.append(new AttackListFormatter().formatElements(attacks, true));
+                    
+                    buffer.append("\n[size=8]Erstellt am ");
+                    buffer.append(new SimpleDateFormat("dd.MM.yy 'um' HH:mm:ss").format(Calendar.getInstance().getTime()));
+                    buffer.append(" mit DS Workbench ");
+                    buffer.append(Constants.VERSION).append(Constants.VERSION_ADDITION + "[/size]\n");
+                    break;
+                case JOptionPane.NO_OPTION:
+                default:
+                    //Normal
+                    buffer.append("[u]Geplante Befehle[/u]\n\n");
+                    buffer.append(new AttackListFormatter().formatElements(attacks, false));
+                    
+                    buffer.append("\nErstellt am ");
+                    buffer.append(new SimpleDateFormat("dd.MM.yy 'um' HH:mm:ss").format(Calendar.getInstance().getTime()));
+                    buffer.append(" mit DS Workbench ");
+                    buffer.append(Constants.VERSION).append(Constants.VERSION_ADDITION + "\n");
+                    break;
             }
 
             String b = buffer.toString();
@@ -1648,7 +1566,7 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
                 GlobalOptions.addProperty("screen.dir", target.getParent());
                 showSuccess("Befehle erfolgreich gespeichert");
                 if (JOptionPaneHelper.showQuestionConfirmBox(this, "Möchtest du die erstellte Datei jetzt im Browser betrachten?", "Information", "Nein", "Ja") == JOptionPane.YES_OPTION) {
-                    BrowserCommandSender.openPage(target.toURI().toURL().toString());
+                    BrowserInterface.openPage(target.toURI().toURL().toString());
                 }
             } catch (Exception e) {
                 if (f != null) {
@@ -1668,20 +1586,6 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
             showInfo("Keine Befehle ausgewählt");
             return;
         }
-        /*
-         * String dir = GlobalOptions.getProperty("screen.dir"); if (dir == null) { dir = "."; } JFileChooser chooser = null; try { chooser
-         * = new JFileChooser(dir); } catch (Exception e) { JOptionPaneHelper.showErrorBox(this, "Konnte Dateiauswahldialog nicht
-         * öffnen.\nMöglicherweise verwendest du Windows Vista. Ist dies der Fall, beende DS Workbench, klicke mit der rechten Maustaste auf
-         * DSWorkbench.exe,\n" + "wähle 'Eigenschaften' und deaktiviere dort unter 'Kompatibilität' den Windows XP Kompatibilitätsmodus.",
-         * "Fehler"); return; }
-         *
-         * chooser.setDialogTitle("Zielverzeichnis auswählen"); chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-         *
-         * chooser.setSelectedFile(new File(dir)); int ret = chooser.showSaveDialog(this); if (ret == JFileChooser.APPROVE_OPTION) { try {
-         * File f = chooser.getSelectedFile(); AttackToTextWriter.writeAttacks(toExport, f, 10); //store current directory
-         * GlobalOptions.addProperty("screen.dir", f.getPath()); showSuccess("Befehle erfolgreich gespeichert"); } catch (Exception e) {
-         * logger.error("Failed to write attacks to textfile", e); showError("Fehler beim Speichern der Textdateien"); } }
-         */
 
         AttacksToTextExportDialog dia = new AttacksToTextExportDialog(DSWorkbenchAttackFrame.getSingleton(), true);
         dia.setLocationRelativeTo(this);
@@ -1713,7 +1617,7 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
                     }
                 }
 
-                if (BrowserCommandSender.sendAttack(a, profile)) {
+                if (BrowserInterface.sendAttack(a, profile)) {
                     a.setTransferredToBrowser(true);
                     sentAttacks++;
                 } else {//give click back in case of an error and for multiple attacks
@@ -1757,7 +1661,7 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
         StringBuilder b = new StringBuilder();
         int cnt = 0;
         for (Attack a : selection) {
-            b.append(Attack.toInternalRepresentation(a)).append("\n");
+            b.append(a.toInternalRepresentation()).append("\n");
             cnt++;
         }
         try {
@@ -1804,18 +1708,6 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
         attackModel.fireTableDataChanged();
     }
 
-    private void sendAttacksAsIGM() {
-        if (getSelectedAttacks().isEmpty()) {
-            showInfo("Kein Befehle gewählt");
-            return;
-        }
-
-        jSubject.setText("Deine Befehle (Plan: " + sAttackPlan + ")");
-        jSendAttacksIGMDialog.pack();
-        jSendAttacksIGMDialog.setLocationRelativeTo(this);
-        jSendAttacksIGMDialog.setVisible(true);
-    }
-
     private void sendAttackToRetimeFrame() {
         if (getSelectedAttacks().isEmpty()) {
             showInfo("Kein Befehle gewählt");
@@ -1856,5 +1748,15 @@ public class AttackTableTab extends javax.swing.JPanel implements ListSelectionL
             }
         }
         return selectedAttacks;
+    }
+
+    public void reloadAttacksFromStd() {
+        List<Attack> selectedAtts = getSelectedAttacks();
+        
+        for(Attack a: selectedAtts) {
+            a.setTroopsByType();
+        }
+        
+        attackModel.fireTableDataChanged();
     }
 }

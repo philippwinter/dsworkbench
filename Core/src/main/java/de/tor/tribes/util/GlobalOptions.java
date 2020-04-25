@@ -19,11 +19,9 @@ import de.tor.tribes.io.DataHolder;
 import de.tor.tribes.io.DataHolderListener;
 import de.tor.tribes.io.WorldDecorationHolder;
 import de.tor.tribes.types.UserProfile;
-import de.tor.tribes.types.test.DummyUserProfile;
-import de.tor.tribes.ui.views.*;
+import de.tor.tribes.ui.windows.AbstractDSWorkbenchFrame;
 import de.tor.tribes.util.attack.AttackManager;
 import de.tor.tribes.util.attack.StandardAttackManager;
-import de.tor.tribes.util.church.ChurchManager;
 import de.tor.tribes.util.conquer.ConquerManager;
 import de.tor.tribes.util.farm.FarmManager;
 import de.tor.tribes.util.map.FormManager;
@@ -35,18 +33,23 @@ import de.tor.tribes.util.sos.SOSManager;
 import de.tor.tribes.util.stat.StatManager;
 import de.tor.tribes.util.tag.TagManager;
 import de.tor.tribes.util.troops.TroopsManager;
-import org.apache.commons.configuration.PropertiesConfiguration;
-import org.apache.log4j.Logger;
-
+import de.tor.tribes.util.village.KnownVillageManager;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.net.URL;
+import java.util.*;
 import javax.help.CSH;
 import javax.help.HelpBroker;
 import javax.help.HelpSet;
 import javax.help.HelpSetException;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.net.URL;
-import java.util.*;
+import jdk.nashorn.api.scripting.URLReader;
+import org.apache.commons.configuration2.PropertiesConfiguration;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * Global settings used by almost all components. e.g. WorldData or UI specific objects
@@ -55,7 +58,7 @@ import java.util.*;
  */
 public class GlobalOptions {
 
-    private static Logger logger = Logger.getLogger("GlobalSettings");
+    private static Logger logger = LogManager.getLogger("GlobalSettings");
     private static boolean INITIALIZED = false;
     private static boolean STARTED = false;
     /**
@@ -68,7 +71,7 @@ public class GlobalOptions {
     private static WorldDecorationHolder mDecorationHolder = null;
     private static String SELECTED_SERVER = null;
     //private static Properties GLOBAL_PROPERTIES = new Properties();
-    private static PropertiesConfiguration GLOBAL_PROPERTIES = null;
+    private static DSPropertiesConfiguration GLOBAL_PROPERTIES = null;
     //flag for online/offline mode
     private static boolean isOfflineMode = false;
     //used to store last attack time of AttackAddFrame
@@ -128,7 +131,7 @@ public class GlobalOptions {
         return MINIMAL;
     }
 
-    public static void setInternatDataDamaged(boolean pValue) {
+    public static void setInternalDataDamaged(boolean pValue) {
         logger.info("Internal data markes as " + ((pValue) ? "'DAMAGED'" : "'VALID'"));
         internalDataDamaged = pValue;
     }
@@ -213,12 +216,12 @@ public class GlobalOptions {
      * Load the global properties
      */
     private static void loadProperties() throws Exception {
-        GLOBAL_PROPERTIES = new PropertiesConfiguration();
+        GLOBAL_PROPERTIES = new DSPropertiesConfiguration();
         if (new File("global.properties").exists()) {
             logger.debug("Loading existing properties file");
-            FileInputStream fin = new FileInputStream("global.properties");
-            GLOBAL_PROPERTIES.load(fin);
-            fin.close();
+            try (FileReader fin = new FileReader(new File("global.properties"))) {
+                GLOBAL_PROPERTIES.load(fin);
+            }
         } else {
             logger.debug("Creating empty properties file");
             saveProperties();
@@ -230,11 +233,9 @@ public class GlobalOptions {
      */
     public static void saveProperties() {
         logger.debug("Saving global properties");
-        try {
-            FileOutputStream fout = new FileOutputStream("global.properties");
+        try (FileWriter fout = new FileWriter(new File("global.properties"))) {
             GLOBAL_PROPERTIES.save(fout);
             fout.flush();
-            fout.close();
         } catch (Exception e) {
             logger.error("Failed to write properties", e);
         }
@@ -243,24 +244,7 @@ public class GlobalOptions {
 
     public static void storeViewStates() {
         logger.debug("Saving view state");
-        DSWorkbenchAttackFrame.getSingleton().storeProperties();
-        DSWorkbenchChurchFrame.getSingleton().storeProperties();
-        DSWorkbenchDistanceFrame.getSingleton().storeProperties();
-        DSWorkbenchDoItYourselfAttackPlaner.getSingleton().storeProperties();
-        DSWorkbenchMarkerFrame.getSingleton().storeProperties();
-        // DSWorkbenchMerchantDistibutor.getSingleton().storeProperties();
-        //DSWorkbenchReTimerFrame.getSingleton().storeProperties();
-        DSWorkbenchSOSRequestAnalyzer.getSingleton().storeProperties();
-        DSWorkbenchStatsFrame.getSingleton().storeProperties();
-        DSWorkbenchTagFrame.getSingleton().storeProperties();
-        DSWorkbenchConquersFrame.getSingleton().storeProperties();
-        DSWorkbenchFormFrame.getSingleton().storeProperties();
-        DSWorkbenchRankFrame.getSingleton().storeProperties();
-        DSWorkbenchNotepad.getSingleton().storeProperties();
-        DSWorkbenchTroopsFrame.getSingleton().storeProperties();
-        DSWorkbenchSelectionFrame.getSingleton().storeProperties();
-        DSWorkbenchReportFrame.getSingleton().storeProperties();
-        DSWorkbenchFarmManager.getSingleton().storeProperties();
+        AbstractDSWorkbenchFrame.saveAllProperties();
     }
 
     /**
@@ -281,20 +265,16 @@ public class GlobalOptions {
      * Get the value of a property
      */
     public static String getProperty(String pKey) {
-        if (GLOBAL_PROPERTIES == null || pKey == null) {
-            return null;
+        if (GLOBAL_PROPERTIES == null) {
+            //return standard Value
+            return GlobalDefaults.getProperty(pKey);
         }
-        Object property = GLOBAL_PROPERTIES.getProperty(pKey);
-        if (property != null) {
-            return property.toString();
-        } else {
-            return null;
-        }
+        return GLOBAL_PROPERTIES.getString(pKey);
     }
 
-    public static PropertiesConfiguration getProperties() {
+    public static DSPropertiesConfiguration getProperties() {
         if (GLOBAL_PROPERTIES == null) {//return empty properties if not yet loaded
-            return new PropertiesConfiguration();
+            return new DSPropertiesConfiguration();
         }
         return GLOBAL_PROPERTIES;
     }
@@ -312,9 +292,10 @@ public class GlobalOptions {
      * Load user data (attacks, markers...)
      */
     public static void loadUserData() {
-        if (SELECTED_SERVER != null
-                && mSelectedProfile != null
-                && !mSelectedProfile.equals(DummyUserProfile.getSingleton())) {
+        if (SELECTED_SERVER != null && mSelectedProfile != null) {
+            logger.debug("Loading standard attacks");
+            fireDataHolderEvent("Lade Standardangriffe");
+            StandardAttackManager.getSingleton().loadElements(mSelectedProfile.getProfileDirectory() + "/stdAttacks.xml");
             logger.debug("Loading markers");
             fireDataHolderEvent("Lade Markierungen");
             MarkerManager.getSingleton().loadElements(mSelectedProfile.getProfileDirectory() + "/markers.xml");
@@ -330,9 +311,9 @@ public class GlobalOptions {
             logger.debug("Loading forms");
             fireDataHolderEvent("Lade Zeichnungen");
             FormManager.getSingleton().loadElements(mSelectedProfile.getProfileDirectory() + "/forms.xml");
-            logger.debug("Loading churches");
-            fireDataHolderEvent("Lade Kirchen");
-            ChurchManager.getSingleton().loadElements(mSelectedProfile.getProfileDirectory() + "/churches.xml");
+            logger.debug("Loading KnownVillages");
+            fireDataHolderEvent("Lade Bekannte Dörfer");
+            KnownVillageManager.getSingleton().loadElements(mSelectedProfile.getProfileDirectory() + "/villages.xml");
             logger.debug("Loading rois");
             fireDataHolderEvent("Lade ROIs");
             ROIManager.getSingleton().loadROIsFromFile(mSelectedProfile.getProfileDirectory() + "/rois.xml");
@@ -342,9 +323,6 @@ public class GlobalOptions {
             logger.debug("Loading notes");
             fireDataHolderEvent("Lade Notizen");
             NoteManager.getSingleton().loadElements(mSelectedProfile.getProfileDirectory() + "/notes.xml");
-            logger.debug("Loading standard attacks");
-            fireDataHolderEvent("Lade Standardangriffe");
-            StandardAttackManager.getSingleton().loadElements(mSelectedProfile.getProfileDirectory() + "/stdAttacks.xml");
             logger.debug("Loading reports");
             fireDataHolderEvent("Lade Berichte");
             ReportManager.getSingleton().loadElements(mSelectedProfile.getProfileDirectory() + "/reports.xml");
@@ -353,7 +331,9 @@ public class GlobalOptions {
             fireDataHolderEvent("Lade Farminformationen");
             FarmManager.getSingleton().loadElements(mSelectedProfile.getProfileDirectory() + "/farms.xml");
             logger.debug("Removing temporary data");
+            fireDataHolderEvent("Entferne temporäre Daten");
             DataHolder.getSingleton().removeTempData();
+            fireDataHolderEvent("Fertig");
         }
     }
 
@@ -367,10 +347,7 @@ public class GlobalOptions {
      * Load user data (attacks, markers...)
      */
     public static void saveUserData() {
-        if (SELECTED_SERVER != null
-                && mSelectedProfile != null
-                && !mSelectedProfile.equals(DummyUserProfile.getSingleton())
-                && !internalDataDamaged) {
+        if (SELECTED_SERVER != null && mSelectedProfile != null && !internalDataDamaged) {
             logger.debug("Saving markers");
             MarkerManager.getSingleton().saveElements(mSelectedProfile.getProfileDirectory() + "/markers.xml");
             logger.debug("Saving attacks");
@@ -382,7 +359,7 @@ public class GlobalOptions {
             logger.debug("Saving forms");
             FormManager.getSingleton().saveElements(mSelectedProfile.getProfileDirectory() + "/forms.xml");
             logger.debug("Saving churches");
-            ChurchManager.getSingleton().saveElements(mSelectedProfile.getProfileDirectory() + "/churches.xml");
+            KnownVillageManager.getSingleton().saveElements(mSelectedProfile.getProfileDirectory() + "/villages.xml");
             logger.debug("Saving rois");
             ROIManager.getSingleton().saveROIsToFile(mSelectedProfile.getProfileDirectory() + "/rois.xml");
             logger.debug("Saving conquers");
@@ -446,5 +423,177 @@ public class GlobalOptions {
 
     public static Date getLastArriveTime() {
         return lastArriveTime;
+    }
+    
+    
+    /**
+     * Simple sub-class to store the GLOBAL_PROPERTIES
+     *
+     * @author extremecrazycoder
+     */
+    public static class DSPropertiesConfiguration {
+        private static PropertiesConfiguration GLOBAL_PROPERTIES = null;
+        
+        public DSPropertiesConfiguration() {
+            GLOBAL_PROPERTIES = new PropertiesConfiguration();
+}
+        
+        public DSPropertiesConfiguration(String fileName) throws ConfigurationException {
+            this(new File(fileName));
+        }
+        
+        public DSPropertiesConfiguration(File file) throws ConfigurationException {
+            this();
+            try {
+                GLOBAL_PROPERTIES.read(new FileReader(file));
+            } catch (IOException ex) {
+                logger.error("Can't read Global options", ex);
+            }
+        }
+        
+        public DSPropertiesConfiguration(URL url) throws ConfigurationException {
+            this();
+            try {
+                GLOBAL_PROPERTIES.read(new URLReader(url));
+            } catch (IOException ex) {
+                logger.error("Can't read Global options", ex);
+            }
+        }
+        
+        public synchronized void load(FileReader in) throws ConfigurationException, IOException {
+            GLOBAL_PROPERTIES.read(in);
+        }
+        
+        public void save(FileWriter write) throws ConfigurationException, IOException {
+            GLOBAL_PROPERTIES.write(write);
+        }
+        
+        /**
+         * 
+         * @param key the key of the Option we want
+         * @param def get the Default ore the user-defined value?
+         */
+        private Object getObject(String key, boolean def) {
+            /*logger.debug("Fetching " + ((def)?("default of"):("")) + 
+                    "Option '" + key + "'");*/
+            Object obj = GLOBAL_PROPERTIES.getProperty(key);
+            if(obj == null || def) {
+                obj = GlobalDefaults.getProperties().getProperty(key);
+            }
+            return obj;
+        }
+        
+        public String getString(String key) {
+            return getString(key, false);
+        }
+        
+        private String getString(String key, boolean def) {
+            Object obj = getObject(key, def);
+            if(obj instanceof String) return (String) obj;
+            if(obj == null) {
+                if(def) {
+                    logger.fatal("'" + key + "' existiert nicht");
+                    throw new RuntimeException("'" + key + "' existiert nicht");
+                }
+                else {
+                    return getString(key, true);
+                }
+            }
+            return obj.toString();
+        }
+        
+        public boolean getBoolean(String key) {
+            return getBoolean(key, false);
+        }
+        
+        private boolean getBoolean(String key, boolean def) {
+            Object obj = getObject(key, def);
+            if(obj instanceof Boolean) return (Boolean) obj;
+            
+            try {
+                return Boolean.parseBoolean(obj.toString());
+            }
+            catch(Exception e) {
+                if(!def) return getBoolean(key, true);
+                logger.fatal("'" + key + "' ist kein Boolean", e);
+                throw new RuntimeException("'" + key + "' ist kein Boolean", e);
+            }
+        }
+        
+        public int getInt(String key) {
+            return getInt(key, false);
+        }
+        
+        private int getInt(String key, boolean def) {
+            Object obj = getObject(key, def);
+            if(obj instanceof Integer) return (Integer) obj;
+            
+            try {
+                String objStr = obj.toString();
+                //remove decimals for integers
+                if(objStr.contains(".")) objStr = objStr.substring(0, objStr.indexOf("."));
+                return Integer.parseInt(objStr);
+            }
+            catch(Exception e) {
+                if(!def) return getInt(key, true);
+                logger.fatal("'" + key + "' ist kein Integer", e);
+                throw new RuntimeException("'" + key + "' ist kein Integer", e);
+            }
+        }
+        
+        public long getLong(String key) {
+            return getLong (key, false);
+        }
+        
+        private long getLong(String key, boolean def) {
+            Object obj = getObject(key, def);
+            if(obj instanceof Long) return (Long) obj;
+            
+            try {
+                String objStr = obj.toString();
+                //remove decimals for longs
+                if(objStr.contains(".")) objStr = objStr.substring(0, objStr.indexOf("."));
+                return Long.parseLong(objStr);
+            }
+            catch(Exception e) {
+                if(!def) return getLong(key, true);
+                logger.fatal("'" + key + "' ist kein Long", e);
+                throw new RuntimeException("'" + key + "' ist kein Long", e);
+            }
+        }
+        
+        public double getDouble(String key) {
+            return getDouble(key, false);
+        }
+        
+        private double getDouble(String key, boolean def) {
+            Object obj = getObject(key, def);
+            if(obj instanceof Double) return (Double) obj;
+            
+            try {
+                String objStr = obj.toString();
+                return Double.parseDouble(objStr);
+            }
+            catch(Exception e) {
+                if(!def) return getDouble(key, true);
+                logger.fatal("'" + key + "' ist kein Double", e);
+                throw new RuntimeException("'" + key + "' ist kein Double", e);
+            }
+        }
+        
+        public void setProperty(String pKey, String pValue) {
+            GLOBAL_PROPERTIES.setProperty(pKey, pValue);
+        }
+        
+        public void clearProperty(String pKey) {
+            GLOBAL_PROPERTIES.clearProperty(pKey);
+        }
+
+        public boolean exists(String key) {
+            Object obj = getObject(key, false);
+            if(obj != null) return true;
+            obj = getObject(key, true);
+            return obj != null;
+        }
     }
 }

@@ -15,8 +15,6 @@
  */
 package de.tor.tribes.util.farm;
 
-import com.thoughtworks.xstream.XStream;
-import com.thoughtworks.xstream.converters.ConversionException;
 import de.tor.tribes.control.GenericManager;
 import de.tor.tribes.control.ManageableType;
 import de.tor.tribes.io.DataHolder;
@@ -25,18 +23,22 @@ import de.tor.tribes.types.FightReport;
 import de.tor.tribes.types.ext.*;
 import de.tor.tribes.util.*;
 import de.tor.tribes.util.report.ReportManager;
+import de.tor.tribes.util.xml.JDomUtils;
 import java.awt.HeadlessException;
 import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.UnsupportedFlavorException;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Point2D;
 import java.io.*;
-import java.util.Hashtable;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jdom2.Element;
 
 /**
  *
@@ -44,9 +46,9 @@ import org.apache.log4j.Logger;
  */
 public class FarmManager extends GenericManager<FarmInformation> {
 
-  private static Logger logger = Logger.getLogger("FarmManager");
+  private static Logger logger = LogManager.getLogger("FarmManager");
   private static FarmManager SINGLETON = null;
-  private Hashtable<Village, FarmInformation> infoMap = null;
+  private HashMap<Village, FarmInformation> infoMap = null;
   private Village lastUpdatedFarm = null;
 
   public static synchronized FarmManager getSingleton() {
@@ -58,7 +60,7 @@ public class FarmManager extends GenericManager<FarmInformation> {
 
   FarmManager() {
     super(false);
-    infoMap = new Hashtable<>();
+    infoMap = new HashMap<>();
   }
 
   public FarmInformation addFarm(Village pVillage) {
@@ -66,10 +68,7 @@ public class FarmManager extends GenericManager<FarmInformation> {
     if (info == null) {
       info = new FarmInformation(pVillage);
       infoMap.put(pVillage, info);
-      info.setJustCreated(true);
       addManagedElement(info);
-    } else {
-      info.setJustCreated(false);
     }
     return info;
   }
@@ -103,7 +102,7 @@ public class FarmManager extends GenericManager<FarmInformation> {
       for (Village farm : villages) {
         if (farm != null && !handled.contains(farm) && farm.getTribe().equals(Barbarians.getSingleton())) {
           FarmInformation info = addFarm(farm);
-          if (info.isJustCreated()) {
+          if (info.getLastReport() < 0) {
             FightReport r = ReportManager.getSingleton().findLastReportForSource(farm);
             if (r != null) {
               info.updateFromReport(r);
@@ -137,41 +136,51 @@ public class FarmManager extends GenericManager<FarmInformation> {
         if (!group.equals(ReportManager.FARM_SET)) {
           searchInGroups.add(group);
         }
+        logger.debug(searchInGroups.size() + "groups are used");
       }
     } else {
-      searchInGroups.add(pReportSet);
+        searchInGroups.add(pReportSet);
+        logger.debug(searchInGroups.size() + "groups are used");
     }
-
+    logger.debug(ReportManager.getSingleton().getAllElements(searchInGroups).size() + " Elements are found");
     for (ManageableType t : ReportManager.getSingleton().getAllElements(searchInGroups)) {
+    	
       FightReport report = (FightReport) t;
       Village target = report.getTargetVillage();
-      if (report.isWon() && !(report.getTargetVillage().getTribe().getId() == yourTribe.getId())) {
+      if (report.isWon() && !(target.getTribe().getId() == yourTribe.getId())) {
         boolean allowed;
         if (report.getTargetVillage().getTribe().getAlly() != null && report.getTargetVillage().getTribe().getAlly().equals(yourTribe.getAlly())) {
+        	logger.debug("Village counts as ally");
           //own ally
           allowed = pAllowTribesInOwnAlly;
         } else {//target is not in own ally
+        	logger.debug("Not an ally");
           if (!report.getTargetVillage().getTribe().equals(Barbarians.getSingleton())) {
+        	  logger.debug("Village tribe is not barbarian");
             //village has owner
             if ((report.getTargetVillage().getTribe().getAlly() == null || report.getTargetVillage().getTribe().getAlly().equals(NoAlly.getSingleton()))) {
               //owner has no ally
+            	logger.debug("Village is not Barbarian and is not an ally ally");
               allowed = pAllowAloneTribes;
             } else {
+            	logger.debug("Village is not Barbarian and is an ally ally");
               //tribe is in ally
               allowed = pAllowTribesInAllies;
             }
           } else {
             //Barbarians
             allowed = true;
+            logger.debug("Report is about Barbarian");
           }
         }
-
+        
+        logger.debug("Start adding the farms");
         if (allowed) {
           if (!handled.contains(target)) {//add farm
             FarmInformation info = addFarm(target);
             info.updateFromReport(report);
             handled.add(target);
-            if (info.isJustCreated()) {
+            if (info.getLastReport() < 0) {
               addCount++;
             }
           } else {//update to newer report
@@ -188,6 +197,7 @@ public class FarmManager extends GenericManager<FarmInformation> {
         }
       }
     }
+    logger.debug(addCount + " farms are found");
     revalidate(true);
     return addCount;
   }
@@ -200,15 +210,17 @@ public class FarmManager extends GenericManager<FarmInformation> {
     invalidate();
     for (Village v : GlobalOptions.getSelectedProfile().getTribe().getVillageList()) {
       Ellipse2D.Double e = new Ellipse2D.Double((int) v.getX() - pRadius, (int) v.getY() - pRadius, 2 * pRadius, 2 * pRadius);
+      
+      Rectangle mapDim = ServerSettings.getSingleton().getMapDimension();
       for (int x = (int) v.getX() - pRadius; x < (int) v.getX() + pRadius; x++) {
         for (int y = (int) v.getY() - pRadius; y < (int) v.getY() + pRadius; y++) {
-          if (x > 0 && x < ServerSettings.getSingleton().getMapDimension().width
-                  && y > 0 && y < ServerSettings.getSingleton().getMapDimension().height) {
+          if (x >= mapDim.getMinX() && x <= mapDim.getMaxX()
+                  && y >= mapDim.getMinY() && y <= mapDim.getMaxY()) {
             if (e.contains(new Point2D.Double(x, y))) {
               Village farm = DataHolder.getSingleton().getVillages()[x][y];
               if (farm != null && farm.getTribe().equals(Barbarians.getSingleton())) {
                 FarmInformation info = addFarm(farm);
-                if (info.isJustCreated()) {
+                if (info.getLastReport() < 0) {
                   FightReport r = ReportManager.getSingleton().findLastReportForSource(farm);
                   if (r != null) {
                     info.updateFromReport(r);
@@ -232,15 +244,17 @@ public class FarmManager extends GenericManager<FarmInformation> {
     int addCount = 0;
     invalidate();
     Ellipse2D.Double e = new Ellipse2D.Double(pCenter.x - pRadius, pCenter.y - pRadius, 2 * pRadius, 2 * pRadius);
+      
+    Rectangle mapDim = ServerSettings.getSingleton().getMapDimension();
     for (int i = pCenter.x - pRadius; i < pCenter.x + pRadius; i++) {
       for (int j = pCenter.y - pRadius; j < pCenter.y + pRadius; j++) {
-        if (i > 0 && i < ServerSettings.getSingleton().getMapDimension().width
-                && j > 0 && j < ServerSettings.getSingleton().getMapDimension().height) {
+        if (i >= mapDim.getMinX() && i <= mapDim.getMaxX()
+            && j >= mapDim.getMinY() && j <= mapDim.getMaxY()) {
           if (e.contains(new Point2D.Double(i, j))) {
             Village v = DataHolder.getSingleton().getVillages()[i][j];
             if (v != null && v.getTribe().equals(Barbarians.getSingleton())) {
               FarmInformation info = addFarm(v);
-              if (info.isJustCreated()) {
+              if (info.getLastReport() < 0) {
                 FightReport r = ReportManager.getSingleton().findLastReportForSource(v);
                 if (r != null) {
                   info.updateFromReport(r);
@@ -269,151 +283,45 @@ public class FarmManager extends GenericManager<FarmInformation> {
   }
 
   @Override
-  public void loadElements(String pFile) {
-    XStream x = new XStream();
-    x.alias("farmInfo", FarmInformation.class);
-    lastUpdatedFarm = null;
-    FileReader r = null;
-    logger.debug("Reading farm information from file " + pFile);
-    initialize();
-    infoMap.clear();
+  public int importData(Element pElm, String pExtension) {
+    if (pElm == null) {
+        logger.error("Element argument is 'null'");
+        return -1;
+    }
+    invalidate();
+    int result = 0;
+    logger.debug("Reading farm information");
     try {
-      r = new FileReader(pFile);
-      List<ManageableType> el = (List<ManageableType>) x.fromXML(r);
-      invalidate();
-      for (ManageableType t : el) {
-        FarmInformation info = (FarmInformation) t;
-        if (info.getVillage() != null) {
+      for (Element e : (List<Element>) JDomUtils.getNodes(pElm, "farmInfos/farmInfo")) {
+        FarmInformation element = new FarmInformation(e);
+        if (element.getVillage() != null) {
           //just add valid information
-          info.revalidate();
-          addManagedElement(info);
-          infoMap.put(info.getVillage(), info);
+          element.revalidate();
+          addManagedElement(element);
+          infoMap.put(element.getVillage(), element);
+          result++;
         }
       }
-      r.close();
       logger.debug("Farm information successfully read");
     } catch (Exception e) {
+      result = result * (-1) - 1;
       logger.error("Failed to read farm information", e);
-    } finally {
-      try {
-        if (r != null) {
-          r.close();
-        }
-      } catch (IOException ignored) {
-      }
     }
-
     revalidate(true);
+    return result;
   }
 
   @Override
-  public void saveElements(String pFile) {
-    XStream x = new XStream();
-    x.alias("farmInfo", FarmInformation.class);
-    logger.debug("Writing farm information to file " + pFile);
-    FileWriter w = null;
-
-    try {
-      w = new FileWriter(pFile);
-      x.toXML(getAllElements(), w);
-      w.flush();
-    } catch (IOException ioe) {
-      logger.error("Failed to write farm information", ioe);
-    } finally {
-      try {
-        if (w != null) {
-          w.close();
-        }
-      } catch (IOException ignored) {
-      }
+  public Element getExportData(final List<String> pGroupsToExport) {
+    Element farmInfos = new Element("farmInfos");
+    if (pGroupsToExport == null || pGroupsToExport.isEmpty()) {
+        return farmInfos;
     }
-  }
-
-  @Override
-  public String getExportData(List<String> pGroupsToExport) {
-    XStream x = new XStream();
-    x
-            .alias("farmInfo", FarmInformation.class
-            );
-    ByteArrayOutputStream bout = new ByteArrayOutputStream();
-
-    try {
-      x.toXML(getAllElements(), bout);
-      bout.flush();
-      bout.close();
-    } catch (IOException ioe) {
-      logger.error("Failed to write farm information", ioe);
-    } finally {
-      try {
-        if (bout != null) {
-          bout.close();
-        }
-      } catch (IOException ignored) {
-      }
+    
+    for (ManageableType element : getAllElements()) {
+      farmInfos.addContent(element.toXml("farmInfo"));
     }
-
-    return bout.toString();
-  }
-
-  @Override
-  public boolean importData(File pFile, String pExtension) {
-    StringBuilder b = new StringBuilder();
-    BufferedReader reader = null;
-    try {
-      reader = new BufferedReader(new FileReader(pFile));
-      String line = "";
-      boolean haveStart = false;
-      String end = "</java.util.Collections_-UnmodifiableRandomAccessList>";
-      while ((line = reader.readLine()) != null) {
-        if (line.startsWith("<java.util.Collections")) {
-          haveStart = true;
-        }
-
-        if (haveStart) {
-          if (line.startsWith(end)) {
-            b.append(line.substring(0, end.length()));
-          } else {
-            b.append(line);
-          }
-        }
-      }
-    } catch (IOException e) {
-      logger.error("Failed to farm data from file", e);
-    } finally {
-      if (reader != null) {
-        try {
-          reader.close();
-        } catch (IOException ignored) {
-        }
-      }
-    }
-    XStream x = new XStream();
-    x
-            .alias("farmInfo", FarmInformation.class
-            );
-    lastUpdatedFarm = null;
-
-    initialize();
-
-    infoMap.clear();
-
-    try {
-      List<ManageableType> el = (List<ManageableType>) x.fromXML(b.toString());
-      invalidate();
-      for (ManageableType t : el) {
-        FarmInformation info = (FarmInformation) t;
-        info.revalidate();
-        addManagedElement(info);
-        infoMap.put(info.getVillage(), info);
-      }
-      logger.debug("Farm information successfully imported");
-    } catch (ConversionException ce) {
-      logger.error("Failed to deserialize farm information", ce);
-      return false;
-    } finally {
-      revalidate(true);
-    }
-
-    return true;
+    
+    return farmInfos;
   }
 }

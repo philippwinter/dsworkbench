@@ -22,7 +22,9 @@ import de.tor.tribes.util.JOptionPaneHelper;
 import java.io.File;
 import java.util.List;
 import javax.swing.JFileChooser;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  *
@@ -30,7 +32,7 @@ import org.apache.log4j.Logger;
  */
 public class AttacksToTextExportDialog extends javax.swing.JDialog {
 
-    private static Logger logger = Logger.getLogger("AttacksToTextExportDialog");
+    private static Logger logger = LogManager.getLogger("AttacksToTextExportDialog");
     private boolean result = false;
     private Attack[] attacks = null;
 
@@ -187,15 +189,12 @@ public class AttacksToTextExportDialog extends javax.swing.JDialog {
     public boolean setupAndShow(List<Attack> pAttacks) {
         attacks = pAttacks.toArray(new Attack[pAttacks.size()]);
         String dir = GlobalOptions.getProperty("screen.dir");
-        if (dir == null) {
-            dir = ".";
-        }
 
         jTargetFolder.setText(new File(dir).getPath());
         String val = GlobalOptions.getProperty("text.attacks.per.file");
-        jAttacksPerFile.setText((val != null) ? val : "10");
-        jUseExtendedBBCode.setSelected(Boolean.parseBoolean(GlobalOptions.getProperty("extended.text.attacks")));
-        jZipResult.setSelected(Boolean.parseBoolean(GlobalOptions.getProperty("zip.text.attacks")));
+        jAttacksPerFile.setText(val);
+        jUseExtendedBBCode.setSelected(GlobalOptions.getProperties().getBoolean("extended.text.attacks"));
+        jZipResult.setSelected(GlobalOptions.getProperties().getBoolean("zip.text.attacks"));
 
         pack();
         setVisible(true);
@@ -205,9 +204,6 @@ public class AttacksToTextExportDialog extends javax.swing.JDialog {
     private void fireShowTargetSelectionEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireShowTargetSelectionEvent
 
         String dir = GlobalOptions.getProperty("screen.dir");
-        if (dir == null) {
-            dir = ".";
-        }
         JFileChooser chooser = null;
         try {
             chooser = new JFileChooser(dir);
@@ -260,49 +256,7 @@ public class AttacksToTextExportDialog extends javax.swing.JDialog {
         }
         dispose();
     }//GEN-LAST:event_fireCloseEvent
-
-    /**
-     * @param args the command line arguments
-     */
-    public static void main(String args[]) {
-        /*
-         * Set the Nimbus look and feel
-         */
-        //<editor-fold defaultstate="collapsed" desc=" Look and feel setting code (optional) ">
-        /*
-         * If Nimbus (introduced in Java SE 6) is not available, stay with the default look and feel. For details see
-         * http://download.oracle.com/javase/tutorial/uiswing/lookandfeel/plaf.html
-         */
-        try {
-            for (javax.swing.UIManager.LookAndFeelInfo info : javax.swing.UIManager.getInstalledLookAndFeels()) {
-                if ("Nimbus".equals(info.getName())) {
-                    javax.swing.UIManager.setLookAndFeel(info.getClassName());
-                    break;
-                }
-            }
-        } catch (ClassNotFoundException | javax.swing.UnsupportedLookAndFeelException | IllegalAccessException | InstantiationException ex) {
-            java.util.logging.Logger.getLogger(AttacksToTextExportDialog.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
-        }
-        //</editor-fold>
-
-        /*
-         * Create and display the dialog
-         */
-        java.awt.EventQueue.invokeLater(new Runnable() {
-
-            public void run() {
-                AttacksToTextExportDialog dialog = new AttacksToTextExportDialog(new javax.swing.JFrame(), true);
-                dialog.addWindowListener(new java.awt.event.WindowAdapter() {
-
-                    @Override
-                    public void windowClosing(java.awt.event.WindowEvent e) {
-                        System.exit(0);
-                    }
-                });
-                dialog.setVisible(true);
-            }
-        });
-    }
+    
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JTextField jAttacksPerFile;
     private javax.swing.JButton jButton1;

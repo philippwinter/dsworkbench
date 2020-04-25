@@ -16,15 +16,13 @@
 package de.tor.tribes.ui.views;
 
 import de.tor.tribes.io.DataHolder;
+import de.tor.tribes.types.Tag;
 import de.tor.tribes.types.ext.Ally;
 import de.tor.tribes.types.ext.BarbarianAlly;
 import de.tor.tribes.types.ext.Barbarians;
 import de.tor.tribes.types.ext.NoAlly;
-import de.tor.tribes.types.Tag;
 import de.tor.tribes.types.ext.Tribe;
 import de.tor.tribes.types.ext.Village;
-import de.tor.tribes.types.test.DummyProfile;
-import de.tor.tribes.ui.windows.AbstractDSWorkbenchFrame;
 import de.tor.tribes.ui.panels.GenericTestPanel;
 import de.tor.tribes.ui.tree.AllyNode;
 import de.tor.tribes.ui.tree.NodeCellRenderer;
@@ -32,21 +30,23 @@ import de.tor.tribes.ui.tree.SelectionTreeRootNode;
 import de.tor.tribes.ui.tree.TagNode;
 import de.tor.tribes.ui.tree.TribeNode;
 import de.tor.tribes.ui.tree.VillageNode;
-import de.tor.tribes.util.BrowserCommandSender;
+import de.tor.tribes.ui.windows.AbstractDSWorkbenchFrame;
+import de.tor.tribes.util.BrowserInterface;
 import de.tor.tribes.util.Constants;
 import de.tor.tribes.util.GlobalOptions;
 import de.tor.tribes.util.JOptionPaneHelper;
 import de.tor.tribes.util.PluginManager;
 import de.tor.tribes.util.ServerSettings;
 import de.tor.tribes.util.UIHelper;
-import de.tor.tribes.util.interfaces.VillageSelectionListener;
 import de.tor.tribes.util.bb.VillageListFormatter;
 import de.tor.tribes.util.html.SelectionHTMLExporter;
+import de.tor.tribes.util.interfaces.VillageSelectionListener;
 import de.tor.tribes.util.tag.TagManager;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.HeadlessException;
 import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
@@ -61,7 +61,7 @@ import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Enumeration;
-import java.util.Hashtable;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.StringTokenizer;
@@ -72,9 +72,9 @@ import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
-import org.apache.commons.configuration.Configuration;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.Logger;
+import org.apache.commons.configuration2.Configuration;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jdesktop.swingx.JXButton;
 import org.jdesktop.swingx.JXTaskPane;
 import org.jdesktop.swingx.painter.MattePainter;
@@ -107,7 +107,7 @@ public class DSWorkbenchSelectionFrame extends AbstractDSWorkbenchFrame implemen
         }
 
     }
-    private static Logger logger = Logger.getLogger("SelectionFrame");
+    private static Logger logger = LogManager.getLogger("SelectionFrame");
     private static DSWorkbenchSelectionFrame SINGLETON = null;
     private SelectionTreeRootNode mRoot = null;
     private List<Village> treeData = null;
@@ -169,12 +169,14 @@ public class DSWorkbenchSelectionFrame extends AbstractDSWorkbenchFrame implemen
         super.toBack();
     }
 
+    @Override
     public void storeCustomProperties(Configuration pConfig) {
         pConfig.setProperty(getPropertyPrefix() + ".menu.visible", centerPanel.isMenuVisible());
         pConfig.setProperty(getPropertyPrefix() + ".alwaysOnTop", jAlwaysOnTopBox.isSelected());
 
     }
 
+    @Override
     public void restoreCustomProperties(Configuration pConfig) {
         centerPanel.setMenuVisible(pConfig.getBoolean(getPropertyPrefix() + ".menu.visible", true));
         try {
@@ -185,6 +187,7 @@ public class DSWorkbenchSelectionFrame extends AbstractDSWorkbenchFrame implemen
         setAlwaysOnTop(jAlwaysOnTopBox.isSelected());
     }
 
+    @Override
     public String getPropertyPrefix() {
         return "selection.view";
     }
@@ -247,9 +250,9 @@ public class DSWorkbenchSelectionFrame extends AbstractDSWorkbenchFrame implemen
         if (treeMode) {
             //tree view
             //add all villages
-            Hashtable<Ally, AllyNode> allyNodes = new Hashtable<>();
-            Hashtable<Tribe, TribeNode> tribeNodes = new Hashtable<>();
-            Hashtable<Tribe, Hashtable<Tag, TagNode>> tagNodes = new Hashtable<>();
+            HashMap<Ally, AllyNode> allyNodes = new HashMap<>();
+            HashMap<Tribe, TribeNode> tribeNodes = new HashMap<>();
+            HashMap<Tribe, HashMap<Tag, TagNode>> tagNodes = new HashMap<>();
 
             List<Village> used = new LinkedList<>();
 
@@ -281,9 +284,9 @@ public class DSWorkbenchSelectionFrame extends AbstractDSWorkbenchFrame implemen
                 for (Tag tag : TagManager.getSingleton().getTags(v)) {
                     hasTag = true;
 
-                    Hashtable<Tag, TagNode> nodes = tagNodes.get(t);
+                    HashMap<Tag, TagNode> nodes = tagNodes.get(t);
                     if (nodes == null) {
-                        nodes = new Hashtable<>();
+                        nodes = new HashMap<>();
                         tagNodes.put(t, nodes);
                     }
                     TagNode tagNode = nodes.get(tag);
@@ -573,9 +576,6 @@ public class DSWorkbenchSelectionFrame extends AbstractDSWorkbenchFrame implemen
         }
         //do HTML export
         String dir = GlobalOptions.getProperty("screen.dir");
-        if (dir == null) {
-            dir = ".";
-        }
 
         JFileChooser chooser = null;
         try {
@@ -624,7 +624,7 @@ public class DSWorkbenchSelectionFrame extends AbstractDSWorkbenchFrame implemen
                 GlobalOptions.addProperty("screen.dir", target.getParent());
                 showSuccess("Auswahl erfolgreich gespeichert");
                 if (JOptionPaneHelper.showQuestionConfirmBox(this, "Willst du die erstellte Datei jetzt im Browser betrachten?", "Information", "Nein", "Ja") == JOptionPane.YES_OPTION) {
-                    BrowserCommandSender.openPage(target.toURI().toURL().toString());
+                    BrowserInterface.openPage(target.toURI().toURL().toString());
                 }
             } catch (Exception inner) {
                 logger.error("Failed to write selection to HTML", inner);
@@ -872,7 +872,10 @@ public class DSWorkbenchSelectionFrame extends AbstractDSWorkbenchFrame implemen
         if (evt.getSource() == jPerformSelection) {
             Point start = new Point((Integer) jStartX.getValue(), (Integer) jStartY.getValue());
             Point end = new Point((Integer) jEndX.getValue(), (Integer) jEndY.getValue());
-            if (start.x < 0 || end.x < 0 || start.y > ServerSettings.getSingleton().getMapDimension().height || end.y > ServerSettings.getSingleton().getMapDimension().getHeight()) {
+            Rectangle mapDim = ServerSettings.getSingleton().getMapDimension();
+            
+            if (start.x < mapDim.getMinX() || start.x > mapDim.getMaxX() || start.y < mapDim.getMinY() || start.y > mapDim.getMaxY()
+                    || end.x < mapDim.getMinX() || end.x > mapDim.getMaxX() || end.y < mapDim.getMinY() || end.y > mapDim.getMaxY()) {
                 showError("Ungültiger Start- oder Endpunkt");
             } else if ((Math.abs(end.x - start.x) * (end.y - start.y)) > 30000) {
                 showError("<html>Die angegebene Auswahl k&ouml;nnte mehr als 10.000 D&ouml;rfer umfassen.<br/>"
@@ -967,30 +970,7 @@ public class DSWorkbenchSelectionFrame extends AbstractDSWorkbenchFrame implemen
     public void fireVillagesDraggedEvent(List<Village> pVillages, Point pDropLocation) {
         addVillages(pVillages);
     }
-
-    public static void main(String[] args) {
-
-        Logger.getRootLogger().addAppender(new ConsoleAppender(new org.apache.log4j.PatternLayout("%d - %-5p - %-20c (%C [%L]) - %m%n")));
-        GlobalOptions.setSelectedServer("de43");
-        GlobalOptions.setSelectedProfile(new DummyProfile());
-        DataHolder.getSingleton().loadData(false);
-        try {
-            //  UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            UIManager.setLookAndFeel("com.sun.java.swing.plaf.nimbus.NimbusLookAndFeel");
-        } catch (Exception ignored) {
-        }
-        List<Village> selection = new LinkedList<>();
-        for (int i = 0; i < 100; i++) {
-            selection.add(DataHolder.getSingleton().getRandomVillage());
-        }
-
-        DSWorkbenchSelectionFrame.getSingleton().resetView();
-        DSWorkbenchSelectionFrame.getSingleton().addVillages(selection);
-
-        DSWorkbenchSelectionFrame.getSingleton().setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        DSWorkbenchSelectionFrame.getSingleton().setVisible(true);
-
-    }
+    
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private de.tor.tribes.ui.components.CapabilityInfoPanel capabilityInfoPanel1;
     private org.jdesktop.swingx.JXCollapsiblePane infoPanel;
@@ -1022,12 +1002,7 @@ public class DSWorkbenchSelectionFrame extends AbstractDSWorkbenchFrame implemen
     }
 
     public void addVillages(List<Village> pVillages) {
-        boolean showBarbarian = true;
-        try {
-            showBarbarian = Boolean.parseBoolean(GlobalOptions.getProperty("show.barbarian"));
-        } catch (Exception e) {
-            showBarbarian = true;
-        }
+        boolean showBarbarian = GlobalOptions.getProperties().getBoolean("show.barbarian");
         treeData.clear();
         for (Village v : pVillages.toArray(new Village[]{})) {
             if ((v != null && v.getTribe() == Barbarians.getSingleton()) && !showBarbarian) {

@@ -15,7 +15,11 @@
  */
 package de.tor.tribes.util;
 
+import de.tor.tribes.types.ext.Tribe;
 import de.tor.tribes.types.ext.Village;
+import de.tor.tribes.util.troops.TroopsManager;
+import de.tor.tribes.util.troops.VillageTroopsHolder;
+import de.tor.tribes.util.village.KnownVillageManager;
 import java.awt.Point;
 import java.util.List;
 
@@ -24,10 +28,6 @@ import java.util.List;
  * @author Torridity
  */
 public class DSCalculator {
-
-    private static double RESOURCE_PRODUCTION_CONTANT = 1.163118;
-    private static double STORAGE_CAPACITY_CONTANT = 1.2294934;
-    private static double HIDE_CAPACITY_CONTANT = 1.3335;
 
     public static double calculateDistance(Village pSource, Village pTarget) {
         if ((pSource == null) || (pTarget == null)) {
@@ -134,23 +134,72 @@ public class DSCalculator {
         return result;
     }
 
-    public static double calculateResourcesPerHour(int pBuildingLevel) {
-        return 30 * ServerSettings.getSingleton().getSpeed() * Math.pow(RESOURCE_PRODUCTION_CONTANT, (pBuildingLevel - 1));
-    }
-
     public static int calculateEstimatedResourceBuildingLevel(double pResourcesDelta, double pTimeDelta) {
-        return (int) Math.ceil(Math.log(pResourcesDelta / (pTimeDelta * 30 * ServerSettings.getSingleton().getSpeed())) / Math.log(RESOURCE_PRODUCTION_CONTANT) + 1);
-    }
-
-    public static int calculateMaxResourcesInStorage(int pStorageLevel) {
-        return (int) Math.round(1000 * Math.pow(STORAGE_CAPACITY_CONTANT, (pStorageLevel - 1)));
+        return (int) Math.ceil(Math.log(pResourcesDelta / (pTimeDelta * ServerSettings.getSingleton().getResourceConstant() *
+                ServerSettings.getSingleton().getSpeed())) / Math.log(BuildingSettings.RESOURCE_PRODUCTION_FACTOR) + 1);
     }
 
     public static int calculateEstimatedStorageLevel(double pResourcesInStorage) {
-        return (int) Math.ceil(Math.log(pResourcesInStorage / 1000.0) / Math.log(STORAGE_CAPACITY_CONTANT) + 1);
+        return (int) Math.ceil(Math.log(pResourcesInStorage / BuildingSettings.STORAGE_CAPACITY) /
+                Math.log(BuildingSettings.STORAGE_CAPACITY_FACTOR) + 1);
+    }
+    
+    public static double calculateRiseSpeed() {
+        return ServerSettings.getSingleton().getSpeed();
+    }
+    
+    public static String calculateMorale(Tribe pAttacker, Tribe pDefender) {
+        String moral;
+        switch(ServerSettings.getSingleton().getMoralType()) {
+            //TODO Correct this
+            case ServerSettings.TIME_LIMITED_POINTBASED_MORAL:
+            case ServerSettings.TIMEBASED_MORAL:
+                moral = "Unbekannt";
+                break;
+            case ServerSettings.POINTBASED_MORAL:
+                int temp = (int) (((pDefender.getPoints() / pAttacker.getPoints()) * 3 + 0.3) * 100);
+                temp = (temp > 100) ? 100 : temp;
+                moral = temp + "%";
+                break;
+            case ServerSettings.NO_MORAL:
+            default:
+                moral = "100%";
+                break;
+        }
+        return moral;
     }
 
-    public static int calculateMaxHiddenResources(int pHideLevel) {
-        return (int) Math.round(150 * Math.pow(HIDE_CAPACITY_CONTANT, pHideLevel - 1));
+    public static float getFarmSpaceRatio(Village pVillage) {
+        VillageTroopsHolder own = TroopsManager.getSingleton().getTroopsForVillage(pVillage, TroopsManager.TROOP_TYPE.OWN);
+        VillageTroopsHolder otw = TroopsManager.getSingleton().getTroopsForVillage(pVillage, TroopsManager.TROOP_TYPE.ON_THE_WAY);
+        VillageTroopsHolder out = TroopsManager.getSingleton().getTroopsForVillage(pVillage, TroopsManager.TROOP_TYPE.OUTWARDS);
+        
+        double usedPop = 0;
+        if(own != null) {
+            usedPop += own.getTroops().getTroopPopCount();
+        }
+        if(otw != null) {
+            usedPop += otw.getTroops().getTroopPopCount();
+        }
+        if(out != null) {
+            usedPop += out.getTroops().getTroopPopCount();
+        }
+        
+        int max;
+        if(GlobalOptions.getProperties().getBoolean("farm.popup.use.real")) {
+            max = KnownVillageManager.getSingleton().getKnownVillage(pVillage).getFarmSpace();
+            
+            if(max == -1) {
+                //use other value as fallback
+                max = GlobalOptions.getProperties().getInt("max.farm.space");
+            }
+        } else {
+            max = GlobalOptions.getProperties().getInt("max.farm.space");
+        }
+
+        //calculate farm space depending on pop bonus
+        float res = (float) (usedPop / (double) max);
+        
+        return (res > 1.0f) ? 1.0f : res;
     }
 }

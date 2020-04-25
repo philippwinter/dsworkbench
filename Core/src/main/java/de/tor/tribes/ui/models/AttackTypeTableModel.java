@@ -16,31 +16,38 @@
 package de.tor.tribes.ui.models;
 
 import de.tor.tribes.io.DataHolder;
+import de.tor.tribes.io.TroopAmountElement;
 import de.tor.tribes.io.UnitHolder;
 import de.tor.tribes.types.StandardAttack;
-import de.tor.tribes.types.StandardAttackElement;
+import de.tor.tribes.util.JOptionPaneHelper;
 import de.tor.tribes.util.attack.StandardAttackManager;
 import java.util.LinkedList;
 import java.util.List;
 import javax.swing.table.AbstractTableModel;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  *
  * @author Torridity
  */
 public class AttackTypeTableModel extends AbstractTableModel {
+    private static final Logger logger = LogManager.getLogger("AttackTypeTableModel");
 
     private List<String> columnNames = new LinkedList<>();
     private List<Class> columnTypes = new LinkedList<>();
+    private final List<UnitHolder> units;
 
     public AttackTypeTableModel() {
         columnNames.add("Name");
         columnTypes.add(String.class);
         columnNames.add("Symbol");
         columnTypes.add(Integer.class);
-        for (UnitHolder unit : DataHolder.getSingleton().getUnits()) {
+        units = DataHolder.getSingleton().getSendableUnits();
+        for (UnitHolder unit : units) {
             columnNames.add(unit.getPlainName());
-            columnTypes.add(StandardAttackElement.class);
+            columnTypes.add(TroopAmountElement.class);
         }
     }
 
@@ -87,8 +94,20 @@ public class AttackTypeTableModel extends AbstractTableModel {
                 a.setIcon((Integer) aValue);
             }
         } else {
-            UnitHolder unit = DataHolder.getSingleton().getUnits().get(columnIndex - 2);
-            a.getElementForUnit(unit).trySettingAmount((String) aValue);
+            UnitHolder unit = units.get(columnIndex - 2);
+            try {
+                a.getTroops().setAmount(new TroopAmountElement(unit, (String) aValue));
+            } catch(IllegalArgumentException e) {
+                logger.info("cannot set Amount", e);
+                StringBuilder error = new StringBuilder();
+                Throwable cause = e.getCause();
+                if(cause != null) {
+                    error.append(cause.getMessage()).append("\n");
+                }
+                error.append(e.getMessage());
+                JOptionPaneHelper.showWarningBox(null, "Konnte den Wert nicht setzen:\n"
+                        + error.toString(), "Konnte den Wert nicht setzen");
+            }
         }
     }
 
@@ -102,8 +121,8 @@ public class AttackTypeTableModel extends AbstractTableModel {
             case 1:
                 return a.getIcon();
             default:
-                UnitHolder unit = DataHolder.getSingleton().getUnits().get(columnIndex - 2);
-                return a.getElementForUnit(unit);
+                UnitHolder unit = units.get(columnIndex - 2);
+                return a.getTroops().getElementForUnit(unit);
         }
     }
 }

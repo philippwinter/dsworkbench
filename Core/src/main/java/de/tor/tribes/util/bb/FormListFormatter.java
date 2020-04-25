@@ -17,12 +17,11 @@ package de.tor.tribes.util.bb;
 
 import de.tor.tribes.types.drawing.AbstractForm;
 import de.tor.tribes.types.drawing.Circle;
-import org.apache.commons.lang.StringUtils;
-
 import java.text.NumberFormat;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * @author Torridity
@@ -30,7 +29,7 @@ import java.util.List;
 public class FormListFormatter extends BasicFormatter<AbstractForm> {
 
     private static final String[] VARIABLES = new String[] {LIST_START, LIST_END, ELEMENT_COUNT, ELEMENT_ID};
-    private static final String STANDARD_TEMPLATE = "[b]Zeichnungen[/b]\nAnzahl der Zeichnungen: %ELEMENT_COUNT%\n"
+    public static final String STANDARD_TEMPLATE = "[b]Zeichnungen[/b]\nAnzahl der Zeichnungen: %ELEMENT_COUNT%\n"
             + "%LIST_START%\n" + new Circle().getStandardTemplate() + "\n%LIST_END%";
     private static final String TEMPLATE_PROPERTY = "form.list.bbexport.template";
 

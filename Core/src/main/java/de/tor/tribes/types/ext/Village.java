@@ -23,6 +23,7 @@ import de.tor.tribes.util.ServerSettings;
 import de.tor.tribes.util.Skin;
 import de.tor.tribes.util.html.VillageHTMLTooltipGenerator;
 import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.geom.Rectangle2D;
 import java.io.Serializable;
 import java.net.URLDecoder;
@@ -30,12 +31,16 @@ import java.net.URLEncoder;
 import java.text.NumberFormat;
 import java.util.Comparator;
 import java.util.StringTokenizer;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  *
  * @author Charon
  */
 public class Village implements Comparable<Village>, Serializable, BBSupport {
+    private static Logger logger = LogManager.getLogger("Village");
 
     private final static String[] VARIABLES = new String[]{"%NAME%", "%X%", "%Y%", "%CONTINENT%", "%FULL_NAME%", "%TRIBE%", "%ALLY%", "%POINTS%"};
     private final static String STANDARD_TEMPLATE = "[coord]%X%|%Y%[/coord]";
@@ -56,9 +61,8 @@ public class Village implements Comparable<Village>, Serializable, BBSupport {
     }
 
     @Override
-    //@TODO ATTENTION: Workaround...check if this causes errors
     public boolean equals(Object obj) {
-        if (obj instanceof Village && obj != null) {
+        if (obj != null && obj instanceof Village) {
             return id == ((Village) obj).getId();
         }
         return super.equals(obj);
@@ -105,8 +109,6 @@ public class Village implements Comparable<Village>, Serializable, BBSupport {
     private Tribe tribe = null;
     private int points = -1;
     private byte type = -1;
-    private String tempPoints = null;
-    private String tempType = null;
     //cached values
     private String stringRepresentation = null;
     private String coordAsString = null;
@@ -144,25 +146,25 @@ public class Village implements Comparable<Village>, Serializable, BBSupport {
             entry.setX(Short.parseShort(tokenizer.nextToken()));
             entry.setY(Short.parseShort(tokenizer.nextToken()));
             entry.setTribeID(Integer.parseInt(tokenizer.nextToken()));
-            entry.setTempPoints(tokenizer.nextToken());
-            entry.setTempType(tokenizer.nextToken());
+            entry.setPoints(Integer.parseInt(tokenizer.nextToken()));
+            entry.setType(Byte.parseByte(tokenizer.nextToken()));
             if (entry.getPoints() < 21) {
                 //invalid village (event stuff?)
                 return null;
             }
-            return entry;
+            //check if village within coordinate range
+            Rectangle dim = ServerSettings.getSingleton().getMapDimension();
+            if (entry.getX() >= dim.getMinX() && entry.getX() <= dim.getMaxX()
+                    && entry.getY() >= dim.getMinY() && entry.getY() <= dim.getMaxY()) {
+                return entry;
+            } else {
+                logger.warn("Imported village out of Range " + entry.getId() + "/" + entry.getCoordAsString());
+                return null;
+            }
         } catch (Exception e) { //village invalid 
         }
 
         return null;
-    }
-
-    public void setTempPoints(String tempPoints) {
-        this.tempPoints = tempPoints;
-    }
-
-    public void setTempType(String tempType) {
-        this.tempType = tempType;
     }
 
     public String toPlainData() {
@@ -213,12 +215,7 @@ public class Village implements Comparable<Village>, Serializable, BBSupport {
 
     public String getCoordAsString() {
         if (coordAsString == null) {
-            if (ServerSettings.getSingleton().getCoordType() != 2) {
-                int[] hier = DSCalculator.xyToHierarchical((int) x, (int) y);
-                coordAsString = "(" + hier[0] + ":" + hier[1] + ":" + hier[2] + ")";
-            } else {
-                coordAsString = "(" + x + "|" + y + ")";
-            }
+            coordAsString = "(" + x + "|" + y + ")";
         }
         return coordAsString;
     }
@@ -277,11 +274,7 @@ public class Village implements Comparable<Village>, Serializable, BBSupport {
 
     public int getContinent() {
         if (continent == -1) {
-            if (ServerSettings.getSingleton().getCoordType() != 2) {
-                continent = DSCalculator.xyToHierarchical(x, y)[0];
-            } else {
-                continent = DSCalculator.getContinent(x, y);
-            }
+            continent = DSCalculator.getContinent(x, y);
         }
         return continent;
     }
@@ -295,10 +288,6 @@ public class Village implements Comparable<Village>, Serializable, BBSupport {
     }
 
     public int getPoints() {
-        if (this.points == -1) {
-            this.points = Integer.parseInt(tempPoints);
-            tempPoints = null;
-        }
         return points;
     }
 
@@ -311,10 +300,6 @@ public class Village implements Comparable<Village>, Serializable, BBSupport {
     }
 
     public byte getType() {
-        if (this.type == -1) {
-            this.type = Byte.parseByte(tempType);
-            tempType = null;
-        }
         return this.type;
     }
 
@@ -350,10 +335,6 @@ public class Village implements Comparable<Village>, Serializable, BBSupport {
     }
 
     public String toBBCode() {
-        if (ServerSettings.getSingleton().getCoordType() != 2) {
-            int[] hier = DSCalculator.xyToHierarchical(x, y);
-            return "[coord]" + hier[0] + ":" + hier[1] + ":" + hier[2] + "[/coord]";
-        }
         return "[coord]" + x + "|" + y + "[/coord]";
     }
 
@@ -569,6 +550,7 @@ public class Village implements Comparable<Village>, Serializable, BBSupport {
         private T str1, str2;
         private int pos1, pos2, len1, len2;
 
+        @Override
         public int compare(T s1, T s2) {
             str1 = s1;
             str2 = s2;

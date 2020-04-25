@@ -16,7 +16,7 @@
 package de.tor.tribes.ui.wiz.tap;
 
 import de.tor.tribes.io.UnitHolder;
-import de.tor.tribes.types.AbstractTroopMovement;
+import de.tor.tribes.types.TroopMovement;
 import de.tor.tribes.types.UserProfile;
 import de.tor.tribes.types.ext.Village;
 import de.tor.tribes.ui.wiz.tap.types.TAPAttackSourceElement;
@@ -31,7 +31,7 @@ import java.awt.BorderLayout;
 import java.awt.Point;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Hashtable;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -79,7 +79,6 @@ public class AttackCalculationPanel extends WizardPage {
         StyleConstants.setItalic(defaultStyle, true);
         StyleConstants.setFontFamily(defaultStyle, "SansSerif");
         dateFormat = new SimpleDateFormat("HH:mm:ss");
-        jSystematicWarning.setVisible(false);
     }
 
     public static String getDescription() {
@@ -98,6 +97,7 @@ public class AttackCalculationPanel extends WizardPage {
         }
         profile.addProperty("tap.calculation.algo", algo);
         profile.addProperty("tap.calculation.fake.off", jAllowFakeOffs.isSelected());
+        profile.addProperty("tap.calculation.multi.snob", jAllowMultiSnob.isSelected());
     }
 
     public void restoreProperties() {
@@ -112,12 +112,11 @@ public class AttackCalculationPanel extends WizardPage {
         }
         if (type == 0) {
             jBruteForce.setSelected(true);
-            jSystematicWarning.setVisible(false);
         } else {
             jSystematicCalculation.setSelected(true);
-            jSystematicWarning.setVisible(true);
         }
         jAllowFakeOffs.setSelected(Boolean.parseBoolean(profile.getProperty("tap.calculation.fake.off")));
+        jAllowMultiSnob.setSelected(Boolean.parseBoolean(profile.getProperty("tap.calculation.multi.snob")));
     }
 
     /**
@@ -139,7 +138,7 @@ public class AttackCalculationPanel extends WizardPage {
         jAllowFakeOffs = new javax.swing.JCheckBox();
         jBruteForce = new javax.swing.JRadioButton();
         jSystematicCalculation = new javax.swing.JRadioButton();
-        jSystematicWarning = new org.jdesktop.swingx.JXLabel();
+        jAllowMultiSnob = new javax.swing.JCheckBox();
         jScrollPane1 = new javax.swing.JScrollPane();
         jTextPane1 = new javax.swing.JTextPane();
         jCalculateButton = new javax.swing.JButton();
@@ -161,7 +160,7 @@ public class AttackCalculationPanel extends WizardPage {
         jInfoScrollPane.setMinimumSize(new java.awt.Dimension(19, 180));
         jInfoScrollPane.setPreferredSize(new java.awt.Dimension(19, 180));
 
-        jInfoTextPane.setContentType("text/html");
+        jInfoTextPane.setContentType("text/html"); // NOI18N
         jInfoTextPane.setEditable(false);
         jInfoTextPane.setText("<html>Du befindest dich im <b>Angriffsmodus</b>. Hier kannst du die Herkunftsd&ouml;rfer ausw&auml;hlen, die f&uuml;r Angriffe verwendet werden d&uuml;rfen. Hierf&uuml;r hast die folgenden M&ouml;glichkeiten:\n<ul>\n<li>Einf&uuml;gen von Dorfkoordinaten aus der Zwischenablage per STRG+V</li>\n<li>Einf&uuml;gen der Herkunftsd&ouml;rfer aus der Gruppen&uuml;bersicht</li>\n<li>Einf&uuml;gen der Herkunftsd&ouml;rfer aus dem SOS-Analyzer</li>\n<li>Einf&uuml;gen der Herkunftsd&ouml;rfer aus Berichten</li>\n<li>Einf&uuml;gen aus der Auswahlübersicht</li>\n<li>Manuelle Eingabe</li>\n</ul>\n</html>\n");
         jInfoScrollPane.setViewportView(jInfoTextPane);
@@ -202,7 +201,6 @@ public class AttackCalculationPanel extends WizardPage {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
         gridBagConstraints.gridy = 2;
-        gridBagConstraints.gridwidth = 2;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
         gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 5);
         jPanel3.add(jAllowFakeOffs, gridBagConstraints);
@@ -219,11 +217,6 @@ public class AttackCalculationPanel extends WizardPage {
 
         buttonGroup1.add(jSystematicCalculation);
         jSystematicCalculation.setText("Systematische Berechnung");
-        jSystematicCalculation.addChangeListener(new javax.swing.event.ChangeListener() {
-            public void stateChanged(javax.swing.event.ChangeEvent evt) {
-                fireSystematicSelectionChangedEvent(evt);
-            }
-        });
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 0;
@@ -231,19 +224,15 @@ public class AttackCalculationPanel extends WizardPage {
         gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 5);
         jPanel3.add(jSystematicCalculation, gridBagConstraints);
 
-        jSystematicWarning.setForeground(new java.awt.Color(102, 102, 102));
-        jSystematicWarning.setText("Du hast die systematische Berechnung gewählt. Diese Art der Berechnung ist für wenige Ziele gedacht, da die Berechnung sehr zeitintensiv ist. Sind bei der Angriffsplanung mehr als 100 Dörfer beteiligt wird dringend empfohlen, die 'Zufällige Berechnung' zu wählen.");
-        jSystematicWarning.setFont(new java.awt.Font("Tahoma", 0, 9)); // NOI18N
-        jSystematicWarning.setLineWrap(true);
-        jSystematicWarning.setPreferredSize(new java.awt.Dimension(100, 40));
+        jAllowMultiSnob.setText("Mehrfachangriffe mit AGs erlauben");
+        jAllowMultiSnob.setToolTipText("<html>Erlaubt, dass ein Herkunftsdorf öfters dasselbe Zieldorf angreift, falls es sich dabei um AG Angriffe handelt</html>");
+        jAllowMultiSnob.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
         gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 1;
-        gridBagConstraints.gridwidth = 2;
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 2;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.weightx = 1.0;
         gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 5);
-        jPanel3.add(jSystematicWarning, gridBagConstraints);
+        jPanel3.add(jAllowMultiSnob, gridBagConstraints);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
@@ -454,18 +443,14 @@ public class AttackCalculationPanel extends WizardPage {
 
     }//GEN-LAST:event_fireCalculateAttacksEvent
 
-    private void fireSystematicSelectionChangedEvent(javax.swing.event.ChangeEvent evt) {//GEN-FIRST:event_fireSystematicSelectionChangedEvent
-        jSystematicWarning.setVisible(jSystematicCalculation.isSelected());
-    }//GEN-LAST:event_fireSystematicSelectionChangedEvent
-
     private void initializeCalculation() {
         if (jBruteForce.isSelected()) {
             calculator = new BruteForce();
         } else if (jSystematicCalculation.isSelected()) {
             calculator = new Iterix();
         }
-        Hashtable<UnitHolder, List<Village>> sources = new Hashtable<>();
-        Hashtable<UnitHolder, List<Village>> fakeSources = new Hashtable<>();
+        HashMap<UnitHolder, List<Village>> sources = new HashMap<>();
+        HashMap<UnitHolder, List<Village>> fakeSources = new HashMap<>();
         for (TAPAttackSourceElement element : AttackSourceFilterPanel.getSingleton().getFilteredElements()) {
             List<Village> sourcesForUnit;
             if (element.isFake()) {
@@ -485,7 +470,7 @@ public class AttackCalculationPanel extends WizardPage {
         }
         List<Village> targets = new LinkedList<>();
         List<Village> fakeTargets = new LinkedList<>();
-        Hashtable<Village, Integer> maxAttacks = new Hashtable<>();
+        HashMap<Village, Integer> maxAttacks = new HashMap<>();
         for (TAPAttackTargetElement element : AttackTargetFilterPanel.getSingleton().getFilteredElements()) {
             if (element.isFake()) {
                 fakeTargets.add(element.getVillage());
@@ -496,7 +481,8 @@ public class AttackCalculationPanel extends WizardPage {
         }
 
         TimeFrame timeFrame = TimeSettingsPanel.getSingleton().getTimeFrame();
-        calculator.initialize(sources, fakeSources, targets, fakeTargets, maxAttacks, timeFrame, jAllowFakeOffs.isSelected(), null);
+        calculator.initialize(sources, fakeSources, targets, fakeTargets, maxAttacks,
+                timeFrame, jAllowFakeOffs.isSelected(), jAllowMultiSnob.isSelected());
         jProgressBar1.setValue(0);
         calculator.setLogListener(new AbstractAttackAlgorithm.LogListener() {
 
@@ -565,6 +551,7 @@ public class AttackCalculationPanel extends WizardPage {
             doc.insertString(doc.getLength(), "(" + dateFormat.format(new Date(System.currentTimeMillis())) + ") " + pMessage + "\n", doc.getStyle("Info"));
             SwingUtilities.invokeLater(new Runnable() {
 
+                @Override
                 public void run() {
                     scroll();
                 }
@@ -582,12 +569,13 @@ public class AttackCalculationPanel extends WizardPage {
         vp.setViewPosition(point);
     }
 
-    public List<AbstractTroopMovement> getResults() {
+    public List<TroopMovement> getResults() {
         return calculator.getResults();
     }
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.ButtonGroup buttonGroup1;
     private javax.swing.JCheckBox jAllowFakeOffs;
+    private javax.swing.JCheckBox jAllowMultiSnob;
     private javax.swing.JRadioButton jBruteForce;
     private javax.swing.JButton jCalculateButton;
     private javax.swing.JScrollPane jInfoScrollPane;
@@ -609,7 +597,6 @@ public class AttackCalculationPanel extends WizardPage {
     private javax.swing.JProgressBar jProgressBar1;
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JRadioButton jSystematicCalculation;
-    private org.jdesktop.swingx.JXLabel jSystematicWarning;
     private javax.swing.JLabel jTargetAttacks;
     private javax.swing.JLabel jTargetFakes;
     private javax.swing.JTextPane jTextPane1;

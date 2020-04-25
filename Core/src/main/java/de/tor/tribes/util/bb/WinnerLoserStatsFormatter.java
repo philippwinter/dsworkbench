@@ -16,12 +16,11 @@
 package de.tor.tribes.util.bb;
 
 import de.tor.tribes.types.TribeStatsElement.Stats;
-import org.apache.commons.lang.StringUtils;
-
 import java.text.NumberFormat;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * @author Torridity
@@ -40,7 +39,7 @@ public class WinnerLoserStatsFormatter extends BasicFormatter<Stats> {
     private static final String LOSER_BY_OFFENSE = "%LOSER_BY_OFFENSE%";
     private static final String LOSER_BY_DEFENSE = "%LOSER_BY_DEFENSE%";
     private static final String[] VARIABLES = new String[] {};
-    private static final String STANDARD_TEMPLATE = "[b]Gewinner und Verlierer[/b]\n\n"
+    public static final String STANDARD_TEMPLATE = "[b]Gewinner und Verlierer[/b]\n\n"
             + "[table]\n[**]Titel[||]Spieler[/**]\n"
             + "[*][u][b]Gewinner[/b][/u][|][/*]\n"
             + "[*][b]Punktesammler[/b][|]%WINNER_BY_POINTS%[/*]\n"

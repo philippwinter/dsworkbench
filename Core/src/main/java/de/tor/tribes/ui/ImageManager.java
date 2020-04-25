@@ -32,7 +32,9 @@ import java.util.LinkedList;
 import java.util.List;
 import javax.imageio.ImageIO;
 import javax.swing.ImageIcon;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * Class for loading and holding all cursors needed for DS Workbench
@@ -41,7 +43,7 @@ import org.apache.log4j.Logger;
  */
 public class ImageManager {
 
-    private static Logger logger = Logger.getLogger("TextureManager");    //mappanel default
+    private static Logger logger = LogManager.getLogger("TextureManager");    //mappanel default
     private static URL[] NOTE_URLS = null;
     // <editor-fold defaultstate="collapsed" desc="Basic map tool IDs">
     public final static int CURSOR_DEFAULT = 0;
@@ -82,7 +84,7 @@ public class ImageManager {
     public final static int CURSOR_ZOOM = 14;
     public final static int CURSOR_SHOT = 15;
     //</editor-fold>
-    // <editor-fold defaultstate="collapsed" desc="Misc cursor IDs (draw, support, church, radar)">
+    // <editor-fold defaultstate="collapsed" desc="Misc cursor IDs (draw, support, church, radar, watchtower)">
     public final static int CURSOR_SUPPORT = 16;
     public final static int CURSOR_DRAW_LINE = 17;
     public final static int CURSOR_DRAW_RECT = 18;
@@ -97,6 +99,9 @@ public class ImageManager {
     public final static int CURSOR_REMOVE_CHURCH = 27;
     public final static int CURSOR_NOTE = 28;
     public final static int CURSOR_DRAW_ARROW = 29;
+    public final static int CURSOR_WATCHTOWER_1 = 30;
+    public final static int CURSOR_WATCHTOWER_INPUT = 31;
+    public final static int CURSOR_REMOVE_WATCHTOWER = 32;
     //</editor-fold>
     // <editor-fold defaultstate="collapsed" desc="Note map icon IDs">
     public static final int ID_NO_NOTE_ICON = -1;
@@ -283,12 +288,18 @@ public class ImageManager {
             loadCursor("graphics/cursors/no_church.png", "church0");
             loadCursor("graphics/cursors/note.png", "note");
             loadCursor("graphics/cursors/draw_arrow.png", "draw_arrow");
+            //watchtower cursors
+            loadCursor("graphics/cursors/watchtower1.png", "watchtower1");
+            loadCursor("graphics/cursors/watchtower_input.png", "watchtower_input");
+            loadCursor("graphics/cursors/no_watchtower.png", "watchtower0");
         } catch (Exception e) {
             logger.error("Failed to load cursor images", e);
             throw new Exception("Failed to load cursors");
         }
         if (Toolkit.getDefaultToolkit().getMaximumCursorColors() < 16) {
-            logger.warn("Insufficient color depth for custom cursors on current platform. Setting sytem-cursor mode.");
+            logger.warn("Insufficient color depth for custom cursors on current platform:"
+                    + Toolkit.getDefaultToolkit().getMaximumCursorColors()
+                    + " Setting sytem-cursor mode.");
             cursorSupported = false;
         }
     }
@@ -358,7 +369,6 @@ public class ImageManager {
      * Get the cursor for the provided ID
      */
     public static Cursor getCursor(int pID) {
-
         if (!cursorSupported) {
             return Cursor.getDefaultCursor();
         }

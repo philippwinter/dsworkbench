@@ -16,11 +16,11 @@
 package de.tor.tribes.ui.wiz.ref;
 
 import de.tor.tribes.control.ManageableType;
-import de.tor.tribes.ui.wiz.tap.*;
+import de.tor.tribes.io.TroopAmountFixed;
 import de.tor.tribes.io.UnitHolder;
-import de.tor.tribes.types.AbstractTroopMovement;
 import de.tor.tribes.types.Attack;
 import de.tor.tribes.types.StandardAttack;
+import de.tor.tribes.types.TroopMovement;
 import de.tor.tribes.types.ext.Village;
 import de.tor.tribes.ui.components.VillageOverviewMapPanel;
 import de.tor.tribes.ui.models.REFResultTableModel;
@@ -28,6 +28,7 @@ import de.tor.tribes.ui.renderer.*;
 import de.tor.tribes.ui.util.ColorGradientHelper;
 import de.tor.tribes.ui.windows.AttackTransferDialog;
 import de.tor.tribes.ui.wiz.ref.types.REFResultElement;
+import de.tor.tribes.ui.wiz.tap.*;
 import de.tor.tribes.ui.wiz.tap.types.TAPAttackSourceElement;
 import de.tor.tribes.ui.wiz.tap.types.TAPAttackTargetElement;
 import de.tor.tribes.util.Constants;
@@ -39,6 +40,8 @@ import java.awt.Color;
 import java.awt.Point;
 import java.util.*;
 import javax.swing.SwingUtilities;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jdesktop.swingx.decorator.HighlighterFactory;
 import org.netbeans.spi.wizard.Wizard;
 import org.netbeans.spi.wizard.WizardPage;
@@ -56,7 +59,9 @@ public class SupportRefillFinishPanel extends WizardPage {
           + "vorher abschickst, falls die Abschickzeit mitten in der Nacht liegt oder du die Unterstützungen schnell in den Zieldörfern haben möchtest.";
   private static SupportRefillFinishPanel singleton = null;
   private VillageOverviewMapPanel overviewPanel = null;
-
+  
+  private Logger logger = LogManager.getLogger("SupportRefillFinishPanel");
+  
   public static synchronized SupportRefillFinishPanel getSingleton() {
     if (singleton == null) {
       singleton = new SupportRefillFinishPanel();
@@ -127,8 +132,8 @@ public class SupportRefillFinishPanel extends WizardPage {
         jInfoScrollPane.setMinimumSize(new java.awt.Dimension(19, 180));
         jInfoScrollPane.setPreferredSize(new java.awt.Dimension(19, 180));
 
-        jInfoTextPane.setContentType("text/html");
         jInfoTextPane.setEditable(false);
+        jInfoTextPane.setContentType("text/html"); // NOI18N
         jInfoTextPane.setText("<html>Du befindest dich im <b>Angriffsmodus</b>. Hier kannst du die Herkunftsd&ouml;rfer ausw&auml;hlen, die f&uuml;r Angriffe verwendet werden d&uuml;rfen. Hierf&uuml;r hast die folgenden M&ouml;glichkeiten:\n<ul>\n<li>Einf&uuml;gen von Dorfkoordinaten aus der Zwischenablage per STRG+V</li>\n<li>Einf&uuml;gen der Herkunftsd&ouml;rfer aus der Gruppen&uuml;bersicht</li>\n<li>Einf&uuml;gen der Herkunftsd&ouml;rfer aus dem SOS-Analyzer</li>\n<li>Einf&uuml;gen der Herkunftsd&ouml;rfer aus Berichten</li>\n<li>Einf&uuml;gen aus der Auswahlübersicht</li>\n<li>Manuelle Eingabe</li>\n</ul>\n</html>\n");
         jInfoScrollPane.setViewportView(jInfoTextPane);
 
@@ -390,6 +395,7 @@ public class SupportRefillFinishPanel extends WizardPage {
         jPanel5.add(overviewPanel, BorderLayout.CENTER);
 
         SwingUtilities.invokeLater(new Runnable() {
+          @Override
           public void run() {
             jPanel5.updateUI();
           }
@@ -403,32 +409,7 @@ public class SupportRefillFinishPanel extends WizardPage {
 
     private void fireTransferAllToAttackPlanEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireTransferAllToAttackPlanEvent
       List<Attack> attacks = new LinkedList<>();
-      Hashtable<UnitHolder, Integer> split = SupportRefillSettingsPanel.getSingleton().getSplit();
-      StandardAttack standardAttackType = null;
-      for (ManageableType t : StandardAttackManager.getSingleton().getAllElements()) {
-        StandardAttack a = (StandardAttack) t;
-        if (a.equals(split)) {
-          standardAttackType = a;
-          break;
-        }
-      }
-
-      for (int row = 0; row < jxResultsTable.getRowCount(); row++) {
-        int modelRow = jxResultsTable.convertRowIndexToModel(row);
-        REFResultElement move = getModel().getRow(modelRow);
-        Attack a = move.asAttack();
-        if (standardAttackType != null) {
-          a.setType(standardAttackType.getIcon());
-        }
-        attacks.add(a);
-      }
-      transferToAttackView(attacks);
-    }//GEN-LAST:event_fireTransferAllToAttackPlanEvent
-
-    private void fireSelectedToAttackPlanEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireSelectedToAttackPlanEvent
-      int[] selection = jxResultsTable.getSelectedRows();
-      List<Attack> attacks = new LinkedList<>();
-      Hashtable<UnitHolder, Integer> split = SupportRefillSettingsPanel.getSingleton().getSplit();
+      TroopAmountFixed split = SupportRefillSettingsPanel.getSingleton().getSplit();
       StandardAttack used = null;
       for (ManageableType t : StandardAttackManager.getSingleton().getAllElements()) {
         StandardAttack a = (StandardAttack) t;
@@ -437,7 +418,33 @@ public class SupportRefillFinishPanel extends WizardPage {
           break;
         }
       }
+      
+      for (int row = 0; row < jxResultsTable.getRowCount(); row++) {
+        int modelRow = jxResultsTable.convertRowIndexToModel(row);
+        REFResultElement move = getModel().getRow(modelRow);
+        Attack a = move.asAttack();
+        if (used != null) {
+          a.setType(used.getIcon());
+        }
+        a.setTroops(split.transformToDynamic());
+        attacks.add(a);
+      }
+      transferToAttackView(attacks);
+    }//GEN-LAST:event_fireTransferAllToAttackPlanEvent
 
+    private void fireSelectedToAttackPlanEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireSelectedToAttackPlanEvent
+      int[] selection = jxResultsTable.getSelectedRows();
+      List<Attack> attacks = new LinkedList<>();
+      TroopAmountFixed split = SupportRefillSettingsPanel.getSingleton().getSplit();
+      StandardAttack used = null;
+      for (ManageableType t : StandardAttackManager.getSingleton().getAllElements()) {
+        StandardAttack a = (StandardAttack) t;
+        if (a.equals(split)) {
+          used = a;
+          break;
+        }
+      }
+      
       for (int row : selection) {
         int modelRow = jxResultsTable.convertRowIndexToModel(row);
         REFResultElement move = getModel().getRow(modelRow);
@@ -445,6 +452,7 @@ public class SupportRefillFinishPanel extends WizardPage {
         if (used != null) {
           a.setType(used.getIcon());
         }
+        a.setTroops(split.transformToDynamic());
         attacks.add(a);
       }
       transferToAttackView(attacks);
@@ -463,8 +471,18 @@ public class SupportRefillFinishPanel extends WizardPage {
   }
 
   public void update() {
-    List<AbstractTroopMovement> results = SupportRefillCalculationPanel.getSingleton().getResults();
+    List<TroopMovement> results = SupportRefillCalculationPanel.getSingleton().getResults();
     TimeFrame timeFrame = SupportRefillCalculationPanel.getSingleton().getTimeFrame();
+    if(logger.isDebugEnabled()) {
+        StringBuilder log = new StringBuilder();
+        for(TroopMovement movement: results) {
+            log.append(System.lineSeparator());
+            log.append(movement.getTarget().getCoordAsString()).append("/");
+            log.append(movement.getOffCount());
+        }
+        
+        logger.debug(log);
+    }
     List<Long> used = new LinkedList<>();
     REFResultTableModel model = new REFResultTableModel();
     int perfectTargets = 0;
@@ -482,7 +500,7 @@ public class SupportRefillFinishPanel extends WizardPage {
       overviewPanel.addVillage(new Point(elem.getVillage().getX(), elem.getVillage().getY()), Color.BLACK);
     }
 
-    for (AbstractTroopMovement result : results) {
+    for (TroopMovement result : results) {
       result.finalizeMovement(timeFrame, used);
       if (result.offComplete()) {
         perfectTargets++;

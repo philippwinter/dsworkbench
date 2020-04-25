@@ -1,0 +1,13 @@
+*.java text=auto
+*.form text=auto
+*.html text=auto
+*.xml text=auto
+*.tmpl text=auto
+*.parserprop text=auto
+*.sh text=auto
+*.bat text=auto
+*.js text=auto
+*.vbs text=auto
+
+# Windows forced line-endings
+/.idea/* text eol=crlf

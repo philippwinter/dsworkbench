@@ -38,9 +38,10 @@ import javax.swing.text.BadLocationException;
 import javax.swing.text.Style;
 import javax.swing.text.StyleConstants;
 import javax.swing.text.StyledDocument;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang.time.DateUtils;
-import org.apache.log4j.Logger;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.time.DateUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.netbeans.spi.wizard.*;
 
 /**
@@ -49,7 +50,7 @@ import org.netbeans.spi.wizard.*;
  */
 public class RetimerCalculationPanel extends WizardPage {
 
-    private static Logger logger = Logger.getLogger("Retimer-Calculation");
+    private static Logger logger = LogManager.getLogger("Retimer-Calculation");
     private static final String GENERAL_INFO = "In diesem Schritt können alle verfügbaren Retimes berechnet werden. Dabei wird DS Workbench versuchen,<br/>"
             + "die angegebenen Herkunftsdörfer so zu timen, dass sie die angreifenden Dörfer erreichen sobald die Truppen aus diesen Dörfern zurückkehren.<br/>"
             + "Da ein Angriff auch mal schiefgehen kann, berechnet DS Workbench für jedes Herkunfts- und Zieldorf verschiedene Kombinationen, die von der verwendeten<br/>"
@@ -297,6 +298,7 @@ public class RetimerCalculationPanel extends WizardPage {
         setBusy(true);
         new Thread(new Runnable() {
 
+            @Override
             public void run() {
                 try {
                     RETSourceElement[] filtered = RetimerSourceFilterPanel.getSingleton().getFilteredElements();
@@ -336,13 +338,11 @@ public class RetimerCalculationPanel extends WizardPage {
         Village target = pAttack.getSource();
         Village source = pHolder.getVillage();
         long returnTime = pAttack.getReturnTime().getTime();
-        Hashtable<UnitHolder, Integer> amounts = pHolder.getTroops();
-        List<UnitHolder> units = TroopHelper.getContainedUnits(amounts);
+        List<UnitHolder> units = pHolder.getTroops().getContainedUnits(null);
         Collections.sort(units, UnitHolder.RUNTIME_COMPARATOR);
         for (int i = units.size() - 1; i >= 0; i--) {
             UnitHolder unit = units.get(i);
-            Integer amount = amounts.get(unit);
-            if (unit.isRetimeUnit() && amount != null && amount > 0) {
+            if (unit.isRetimeUnit()) {
                 notifyStatusUpdate(" - Teste Einheit '" + unit.getName() + "'");
                 long sendTime = returnTime - DSCalculator.calculateMoveTimeInMillis(source, target, unit.getSpeed());
                 if (sendTime > System.currentTimeMillis() + DateUtils.MILLIS_PER_MINUTE) {
@@ -361,6 +361,7 @@ public class RetimerCalculationPanel extends WizardPage {
                         a.setUnit(unit);
                         a.setSendTime(new Date(sendTime));
                         a.setType(Attack.CLEAN_TYPE);
+                        a.setTroopsByType();
                         results.add(a);
                     }
                 }
@@ -393,6 +394,7 @@ public class RetimerCalculationPanel extends WizardPage {
             doc.insertString(doc.getLength(), "(" + dateFormat.format(new Date(System.currentTimeMillis())) + ") " + pMessage + "\n", doc.getStyle("Info"));
             SwingUtilities.invokeLater(new Runnable() {
 
+                @Override
                 public void run() {
                     scroll();
                 }

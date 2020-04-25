@@ -16,7 +16,6 @@
 package de.tor.tribes.util.js;
 
 import de.tor.tribes.types.Attack;
-import de.tor.tribes.util.DSCalculator;
 import de.tor.tribes.util.ServerSettings;
 import java.awt.Color;
 import java.io.BufferedReader;
@@ -24,16 +23,17 @@ import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.InputStreamReader;
 import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.List;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * @author Charon
  */
 public class AttackScriptWriter {
 
-    private static Logger logger = Logger.getLogger("AttackScriptWriter");
+    private static Logger logger = LogManager.getLogger("AttackScriptWriter");
 
     public static boolean writeAttackScript(List<Attack> pAttacks,
             boolean pDrawAttacks,
@@ -49,7 +49,7 @@ public class AttackScriptWriter {
         String tmpl = "";
         try {
             logger.debug(" - reading template");
-            BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream("./scripts/show.tmpl")));
+            BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream("./templates/scriptShow.tmpl")));
             String line = "";
             while ((line = r.readLine()) != null) {
                 tmpl += line + "\n";
@@ -98,16 +98,15 @@ public class AttackScriptWriter {
             //unit
             block += "'unit':'" + a.getUnit().getPlainName() + ".png',\n";
             //times
-            long sendTime = a.getArriveTime().getTime() - (long) (DSCalculator.calculateMoveTimeInSeconds(a.getSource(), a.getTarget(), a.getUnit().getSpeed()) * 1000);
             SimpleDateFormat df = null;
             if (ServerSettings.getSingleton().isMillisArrival()) {
                 df = new SimpleDateFormat("dd.MM.yy HH:mm:ss.SSS");
             } else {
                 df = new SimpleDateFormat("dd.MM.yy HH:mm:ss");
             }
-            block += "'send':'" + df.format(new Date(sendTime)) + "',\n";
+            block += "'send':'" + df.format(a.getSendTime()) + "',\n";
             block += "'arrive':'" + df.format(a.getArriveTime()) + "',\n";
-            block += "'expired':" + (long) Math.floor(sendTime / 1000) + "\n";
+            block += "'expired':" + (long) Math.floor(a.getSendTime().getTime() / 1000.0) + "\n";
             block += "},\n";
             data += block;
         }

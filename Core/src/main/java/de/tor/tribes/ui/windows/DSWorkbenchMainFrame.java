@@ -15,77 +15,81 @@
  */
 package de.tor.tribes.ui.windows;
 
-import de.tor.tribes.ui.panels.MapPanel;
-import de.tor.tribes.ui.panels.MinimapPanel;
-import com.smardec.mousegestures.MouseGestures;
 import de.tor.tribes.dssim.ui.DSWorkbenchSimulatorFrame;
 import de.tor.tribes.io.DataHolder;
 import de.tor.tribes.types.Tag;
-import de.tor.tribes.types.ext.Tribe;
 import de.tor.tribes.types.UserProfile;
+import de.tor.tribes.types.ext.Tribe;
 import de.tor.tribes.types.ext.Village;
 import de.tor.tribes.ui.*;
 import de.tor.tribes.ui.components.JOutlookBar;
 import de.tor.tribes.ui.components.WelcomePanel;
-import de.tor.tribes.util.interfaces.DSWorkbenchFrameListener;
-import de.tor.tribes.util.interfaces.ToolChangeListener;
-import de.tor.tribes.util.tag.TagManager;
-import java.awt.AWTEvent;
-import java.awt.Desktop;
-import java.awt.Toolkit;
-import java.awt.event.AWTEventListener;
-import java.awt.event.KeyEvent;
-import java.text.NumberFormat;
-import java.util.LinkedList;
-import java.util.List;
-
-import org.apache.log4j.Logger;
+import de.tor.tribes.ui.panels.MapPanel;
+import de.tor.tribes.ui.panels.MinimapPanel;
 import de.tor.tribes.ui.renderer.map.MapRenderer;
 import de.tor.tribes.ui.views.*;
 import de.tor.tribes.ui.wiz.red.ResourceDistributorWizard;
 import de.tor.tribes.ui.wiz.tap.TacticsPlanerWizard;
 import de.tor.tribes.util.*;
-import de.tor.tribes.util.interfaces.MapShotListener;
+import de.tor.tribes.util.ServerSettings.ServerSettingsListener;
 import de.tor.tribes.util.attack.AttackManager;
-import de.tor.tribes.util.church.ChurchManager;
+import de.tor.tribes.util.attack.StandardAttackManager;
 import de.tor.tribes.util.conquer.ConquerManager;
 import de.tor.tribes.util.dist.DistanceManager;
 import de.tor.tribes.util.dsreal.DSRealManager;
 import de.tor.tribes.util.farm.FarmManager;
+import de.tor.tribes.util.interfaces.DSWorkbenchFrameListener;
+import de.tor.tribes.util.interfaces.MapShotListener;
+import de.tor.tribes.util.interfaces.ToolChangeListener;
 import de.tor.tribes.util.map.FormManager;
 import de.tor.tribes.util.mark.MarkerManager;
 import de.tor.tribes.util.note.NoteManager;
 import de.tor.tribes.util.report.ReportManager;
 import de.tor.tribes.util.roi.ROIManager;
+import de.tor.tribes.util.sos.SOSManager;
 import de.tor.tribes.util.stat.StatManager;
-import java.io.File;
-
+import de.tor.tribes.util.tag.TagManager;
 import de.tor.tribes.util.troops.TroopsManager;
+import de.tor.tribes.util.village.KnownVillageManager;
+import de.tor.tribes.util.xml.JDomUtils;
+import java.awt.AWTEvent;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Desktop;
 import java.awt.Dimension;
+import java.awt.Rectangle;
+import java.awt.Toolkit;
+import java.awt.event.AWTEventListener;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.io.FileWriter;
+import java.io.File;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.Hashtable;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import org.apache.commons.io.FileUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jdesktop.swingx.painter.MattePainter;
+import org.jdom2.Document;
+import org.jdom2.Element;
 import org.pushingpixels.flamingo.api.ribbon.JRibbonFrame;
 
 /**
- * @TODO add some simple runtime and retime calculator to replace excel
+ * 
  *
  * @author Charon
+ * @author extremeCrazyCoder
  */
 public class DSWorkbenchMainFrame extends JRibbonFrame implements
         MapPanelListener,
@@ -93,16 +97,18 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         DSWorkbenchFrameListener,
         MapShotListener {
 
-  private static Logger logger = Logger.getLogger("MainApp");
+  private static final Logger logger = LogManager.getLogger("MainApp");
   private double dCenterX = 500.0;
   private double dCenterY = 500.0;
   private double dZoomFactor = 1.0;
+  private double minZoom = 0.4;
+  private double maxZoom = 3;
+  private double dZoomInOutFactor = 1.03;
   //  private TribeTribeAttackFrame mTribeTribeAttackFrame = null;
   private AboutDialog mAbout = null;
   private static DSWorkbenchMainFrame SINGLETON = null;
   private boolean initialized = false;
   private boolean putOnline = false;
-  private MouseGestures mMouseGestures = new MouseGestures();
   private boolean bWatchClipboard = true;
   private final JFileChooser chooser = new JFileChooser();
   private NotificationHideThread mNotificationHideThread = null;
@@ -166,9 +172,9 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         return "JPEG Image (*.jpeg)";
       }
     });
-    // <editor-fold defaultstate="collapsed" desc=" Schedule Backup">
+    
+    //Schedule Backup
     new Timer("BackupTimer", true).schedule(new BackupTask(), 60 * 10000, 60 * 10000);
-        // </editor-fold>
 
     //give focus to map panel if mouse enters map
     jMapPanelHolder.addMouseListener(new MouseAdapter() {
@@ -365,139 +371,52 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
     try {
       String x = GlobalOptions.getSelectedProfile().getProperty("last.x");
       String y = GlobalOptions.getSelectedProfile().getProperty("last.y");
-      dCenterX = Double.parseDouble(x);
-      dCenterY = Double.parseDouble(y);
-      jCenterX.setText(x);
-      jCenterY.setText(y);
+      centerPosition(Double.parseDouble(x), Double.parseDouble(y));
     } catch (Exception e) {
-      if (ServerSettings.getSingleton().getCoordType() != 2) {
-        dCenterX = 250.0;
-        dCenterY = 250.0;
-        int[] hier = DSCalculator.xyToHierarchical(250, 250);
-        jCenterX.setText(Integer.toString(hier[0]));
-        jCenterY.setText(Integer.toString(hier[1]));
-      } else {
-        dCenterX = 500.0;
-        dCenterY = 500.0;
-        jCenterX.setText("500");
-        jCenterY.setText("500");
-      }
+      centerPosition(ServerSettings.getSingleton().getMapDimension().getCenterX(),
+              ServerSettings.getSingleton().getMapDimension().getCenterY());
     }
 
 // </editor-fold>
+
     // <editor-fold defaultstate="collapsed" desc=" Restore other settings ">
-    try {
-      String val = GlobalOptions.getProperty("show.map.popup");
-      if (val == null) {
-        jShowMapPopup.setSelected(true);
-        GlobalOptions.addProperty("show.map.popup", Boolean.toString(true));
-      } else {
-        jShowMapPopup.setSelected(Boolean.parseBoolean(val));
-      }
-    } catch (Exception e) {
-      jShowMapPopup.setSelected(true);
-      GlobalOptions.addProperty("show.map.popup", Boolean.toString(true));
-
-    }
-    try {
-      String val = GlobalOptions.getProperty("show.mouseover.info");
-      if (val == null) {
-        jShowMouseOverInfo.setSelected(false);
-        GlobalOptions.addProperty("show.mouseover.info", Boolean.toString(jShowMouseOverInfo.isSelected()));
-      } else {
-        jShowMouseOverInfo.setSelected(Boolean.parseBoolean(val));
-      }
-    } catch (Exception e) {
-      jShowMouseOverInfo.setSelected(false);
-      GlobalOptions.addProperty("show.mouseover.info", Boolean.toString(jShowMouseOverInfo.isSelected()));
-    }
-
-    try {
-      String val = GlobalOptions.getProperty("include.support");
-      if (val == null) {
-        jIncludeSupport.setSelected(false);
-        GlobalOptions.addProperty("include.support", Boolean.toString(jIncludeSupport.isSelected()));
-      } else {
-        jIncludeSupport.setSelected(Boolean.parseBoolean(val));
-      }
-    } catch (Exception e) {
-      jIncludeSupport.setSelected(true);
-      GlobalOptions.addProperty("include.support", Boolean.toString(jIncludeSupport.isSelected()));
-    }
-
-    try {
-      String val = GlobalOptions.getProperty("highlight.tribes.villages");
-      if (val == null) {
-        jHighlightTribeVillages.setSelected(false);
-        GlobalOptions.addProperty("highlight.tribes.villages", Boolean.toString(jHighlightTribeVillages.isSelected()));
-      } else {
-        jHighlightTribeVillages.setSelected(Boolean.parseBoolean(val));
-      }
-    } catch (Exception e) {
-      jHighlightTribeVillages.setSelected(false);
-      GlobalOptions.addProperty("highlight.tribes.villages", Boolean.toString(jHighlightTribeVillages.isSelected()));
-    }
-    try {
-      String val = GlobalOptions.getProperty("show.ruler");
-      if (val == null) {
-        jShowRuler.setSelected(true);
-        GlobalOptions.addProperty("show.ruler", Boolean.toString(true));
-      } else {
-        jShowRuler.setSelected(Boolean.parseBoolean(val));
-      }
-    } catch (Exception e) {
-      jShowRuler.setSelected(true);
-      GlobalOptions.addProperty("show.ruler", Boolean.toString(true));
-    }
-
-    try {
-      String val = GlobalOptions.getProperty("radar.size");
-      int hour = 1;
-      int min = 0;
-      if (val != null) {
-        int r = Integer.parseInt(val);
-        hour = r / 60;
-        min = r - hour * 60;
-      } else {
-        throw new Exception();
-      }
-      jHourField.setText(Integer.toString(hour));
-      jMinuteField.setText(Integer.toString(min));
-    } catch (Exception e) {
-      jHourField.setText("1");
-      jMinuteField.setText("0");
-      GlobalOptions.addProperty("radar.size", "60");
-    }
-
+    jShowMapPopup.setSelected(GlobalOptions.getProperties().getBoolean("show.map.popup"));
+    jShowMouseOverInfo.setSelected(GlobalOptions.getProperties().getBoolean("show.mouseover.info"));
+    jIncludeSupport.setSelected(GlobalOptions.getProperties().getBoolean("include.support"));
+    jHighlightTribeVillages.setSelected(GlobalOptions.getProperties().getBoolean("highlight.tribes.villages"));
+    jShowRuler.setSelected(GlobalOptions.getProperties().getBoolean("show.ruler"));
+    jDisplayChurch.setSelected(GlobalOptions.getProperties().getBoolean("show.church"));
+    jDisplayWatchtower.setSelected(GlobalOptions.getProperties().getBoolean("show.watchtower"));
+    jDisplayChurch.setEnabled(ServerSettings.getSingleton().isChurch());
+    jDisplayWatchtower.setEnabled(ServerSettings.getSingleton().isWatchtower());
+    ServerSettings.getSingleton().addListener(new ServerSettingsListener() {
+        @Override
+        public void fireServerSettingsChanged() {
+            jDisplayChurch.setEnabled(ServerSettings.getSingleton().isChurch());
+            jDisplayWatchtower.setEnabled(ServerSettings.getSingleton().isWatchtower());
+        }
+    });
+    int r = GlobalOptions.getProperties().getInt("radar.size");
+    int hour = r / 60;
+    jHourField.setText(Integer.toString(hour));
+    jMinuteField.setText(Integer.toString(r - hour * 60));
     // </editor-fold>
+
     // <editor-fold defaultstate="collapsed" desc="Skin Setup">
     DefaultComboBoxModel gpModel = new DefaultComboBoxModel(GlobalOptions.getAvailableSkins());
     jGraphicPacks.setModel(gpModel);
     String skin = GlobalOptions.getProperty("default.skin");
-    if (skin != null) {
-      if (gpModel.getIndexOf(skin) != -1) {
-        jGraphicPacks.setSelectedItem(skin);
-      } else {
-        jGraphicPacks.setSelectedItem("default");
-      }
+    if (gpModel.getIndexOf(skin) != -1) {
+      jGraphicPacks.setSelectedItem(skin);
     } else {
       jGraphicPacks.setSelectedItem("default");
     }
-        //</editor-fold>
-
-    // <editor-fold defaultstate="collapsed" desc=" Init A*Star HelpSystem ">
-    if (!Constants.DEBUG) {
-      GlobalOptions.getHelpBroker().enableHelpKey(DSWorkbenchSimulatorFrame.getSingleton().getRootPane(), "pages.astar", GlobalOptions.getHelpBroker().getHelpSet());
-      GlobalOptions.getHelpBroker().enableHelpKey(getRootPane(), "index", GlobalOptions.getHelpBroker().getHelpSet());
-    }
-        // </editor-fold>
-
-    // <editor-fold defaultstate="collapsed" desc="Init mouse gesture listener">
-    mMouseGestures.setMouseButton(MouseEvent.BUTTON3_MASK);
-    mMouseGestures.addMouseGesturesListener(new MouseGestureHandler());
-    mMouseGestures.start();
-// </editor-fold>
-
+    //</editor-fold>
+    
+    minZoom = GlobalOptions.getProperties().getDouble("map.zoom.min");
+    maxZoom = GlobalOptions.getProperties().getDouble("map.zoom.max");
+    dZoomInOutFactor = GlobalOptions.getProperties().getDouble("map.zoom.in.out.factor");
+    
     mNotificationHideThread = new NotificationHideThread();
     mNotificationHideThread.start();
     SystrayHelper.installSystrayIcon();
@@ -572,6 +491,8 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
       DSWorkbenchMarkerFrame.getSingleton().restoreProperties();
       DSWorkbenchChurchFrame.getSingleton().resetView();
       DSWorkbenchChurchFrame.getSingleton().restoreProperties();
+      DSWorkbenchWatchtowerFrame.getSingleton().resetView();
+      DSWorkbenchWatchtowerFrame.getSingleton().restoreProperties();
       DSWorkbenchAttackFrame.getSingleton().resetView();
       DSWorkbenchAttackFrame.getSingleton().restoreProperties();
       DSWorkbenchAttackFrame.getSingleton().updateCountdownSettings();
@@ -605,14 +526,9 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
       DSWorkbenchRankFrame.getSingleton().resetView();
       DSWorkbenchRankFrame.getSingleton().restoreProperties();
 
-      if (ServerSettings.getSingleton().getCoordType() != 2) {
-        jLabel1.setText("K");
-        jLabel2.setText("S");
-      } else {
-        jLabel1.setText("X");
-        jLabel2.setText("Y");
-        DSRealManager.getSingleton().checkFilesystem();
-      }
+      jLabel1.setText("X");
+      jLabel2.setText("Y");
+      DSRealManager.getSingleton().checkFilesystem();
 
       jROIBox.setModel(new DefaultComboBoxModel(ROIManager.getSingleton().getROIs()));
       DSWorkbenchSelectionFrame.getSingleton().resetView();
@@ -621,7 +537,11 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
       DSWorkbenchNotepad.getSingleton().restoreProperties();
 
       if (!GlobalOptions.isOfflineMode() && DSWorkbenchSimulatorFrame.getSingleton().isVisible()) {
-        DSWorkbenchSimulatorFrame.getSingleton().showIntegratedVersion(DSWorkbenchSettingsDialog.getSingleton().getWebProxy(), GlobalOptions.getSelectedServer());
+        try {
+          DSWorkbenchSimulatorFrame.getSingleton().showIntegratedVersion(DSWorkbenchSettingsDialog.getSingleton().getWebProxy(), GlobalOptions.getSelectedServer());
+        } catch(Exception e) {
+            logger.warn("Problem during writing Troops to AStar", e);
+        }
       }
       ConquerManager.getSingleton().revalidate(true);
       //relevant for first start
@@ -667,10 +587,7 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
    */
   protected void init() {
     logger.info("Starting initialization");
-    /*
-     * logger.info(" * Setting up attack planner"); //setup frames mTribeTribeAttackFrame = new TribeTribeAttackFrame();
-     * mTribeTribeAttackFrame.pack();
-     */
+    
     logger.info(" * Updating server settings");
     //setup everything
 
@@ -700,6 +617,7 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
     DSWorkbenchAttackFrame.getSingleton().addFrameListener(this);
     DSWorkbenchMarkerFrame.getSingleton().addFrameListener(this);
     DSWorkbenchChurchFrame.getSingleton().addFrameListener(this);
+    DSWorkbenchWatchtowerFrame.getSingleton().addFrameListener(this);
     DSWorkbenchConquersFrame.getSingleton().addFrameListener(this);
     DSWorkbenchNotepad.getSingleton().addFrameListener(this);
     DSWorkbenchTagFrame.getSingleton().addFrameListener(this);
@@ -731,34 +649,21 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
     //build the minimap
     logger.info("Adding MinimapPanel");
     jMinimapPanel.add(MinimapPanel.getSingleton());
+    
+    minZoom = GlobalOptions.getProperties().getDouble("map.zoom.min");
+    maxZoom = GlobalOptions.getProperties().getDouble("map.zoom.max");
+    dZoomInOutFactor = GlobalOptions.getProperties().getDouble("map.zoom.in.out.factor");
   }
 
   public void setZoom(double pZoom) {
-    dZoomFactor = pZoom;
+    //limit number of decimals
+    dZoomFactor = ((int) (pZoom*10000))/10000.0;
+    
     checkZoomRange();
+    
+    refreshMap();
   }
-
-  /*
-   * public void setupAndShow() { DockController controller = new DockController(); controller.setRootWindow(this); SplitDockStation
-   * splitDockStation = new SplitDockStation();
-   *
-   * controller.add(splitDockStation); add(splitDockStation); MyDockable miniMap = new MyDockable("Minimap", jMinimapPanel); MyDockable
-   * map = new MyDockable("Hauptkarte", jMapPanelHolder); splitDockStation.drop(map); splitDockStation.drop(miniMap, new
-   * SplitDockProperty(1, 0, 1, 0.5)); MyDockable settings = new MyDockable("Einstellungen", jSettingsScrollPane);
-   * settings.installActions(controller); splitDockStation.drop(settings, new SplitDockProperty(1, 0.5, 1, 0.5)); ScreenDockStation
-   * screenDockStation = new ScreenDockStation(controller.getRootWindowProvider()); DefaultScreenDockWindowFactory fac = new
-   * DefaultScreenDockWindowFactory(); fac.setKind(DefaultScreenDockWindowFactory.Kind.FRAME); screenDockStation.setWindowFactory(fac);
-   * controller.add(screenDockStation); setVisible(true); screenDockStation.setShowing(true); }
-   */
-
-  /*
-   * public static class MyDockable extends DefaultDockable {
-   *
-   * public MyDockable(String title, JComponent pPanel) { setTitleText(title); add(pPanel); }
-   *
-   * public void installActions(DockController pController) { DefaultDockActionSource source = new DefaultDockActionSource(new
-   * CloseAction(pController)); setActionOffers(source); } }
-   */
+  
   @Override
   public void setVisible(boolean v) {
     logger.info("Setting MainWindow visible");
@@ -780,16 +685,11 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
 
         if (vis) {
           //only if set to visible
-          MapPanel.getSingleton().updateMapPosition(dCenterX, dCenterY);
-
-          double w = (double) MapPanel.getSingleton().getWidth() / (double) GlobalOptions.getSkin().getCurrentFieldWidth(dZoomFactor);
-          double h = (double) MapPanel.getSingleton().getHeight() / (double) GlobalOptions.getSkin().getCurrentFieldHeight(dZoomFactor);
-
-          MinimapPanel.getSingleton().setSelection((int) Math.floor(dCenterX), (int) Math.floor(dCenterY), (int) Math.rint(w), (int) Math.rint(h));
+          
           //start ClipboardWatch
           ClipboardWatch.getSingleton();
           //draw map the first time
-          fireRefreshMapEvent(null);
+          refreshMap();
           showReminder();
           if (!GlobalOptions.isMinimal() && !Boolean.parseBoolean(GlobalOptions.getProperty("no.welcome"))) {
             setGlassPane(new WelcomePanel());
@@ -825,7 +725,7 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
       if (JOptionPaneHelper.showQuestionConfirmBox(this, "Offenbar wurde DS Workbench nicht korrekt beendet, daher kann es möglicherweise zu Datenverlust gekommen sein.\n"
               + "Für das aktuelle Profil existiert ein Backup (Erstellt: " + lastBackup + "). Möchtest du dieses wiederherstellen?", "Absturz?", "Nein", "Ja") == JOptionPane.YES_OPTION) {
         showInfo("Wiederherstellung läuft, bitte warten...");
-        if (performImport(backupFile, "backup").equals("Import beendet.\n")) {
+        if (performImport(backupFile, "backup").startsWith("Import erfolgreich beendet")) {
           showSuccess("Wiederherstellung abgeschlossen.");
           JOptionPaneHelper.showInformationBox(this, "Das Backup wurde erfolgreich eingespielt. Wiederhergestellte Pläne und Sets tragen die Erweiterung '_backup'.", "Backup wiederhergestellt");
         } else {
@@ -919,7 +819,11 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         jPanel5 = new javax.swing.JPanel();
         jExportTags = new javax.swing.JCheckBox();
         jExportForms = new javax.swing.JCheckBox();
-        jExportChurches = new javax.swing.JCheckBox();
+        jExportVillageInformation = new javax.swing.JCheckBox();
+        jExportStdAttacks = new javax.swing.JCheckBox();
+        jExportFarminfos = new javax.swing.JCheckBox();
+        jExportSplits = new javax.swing.JCheckBox();
+        jExportSOS = new javax.swing.JCheckBox();
         jAddROIDialog = new javax.swing.JDialog();
         jLabel7 = new javax.swing.JLabel();
         jROIRegion = new javax.swing.JTextField();
@@ -962,6 +866,8 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         jShowMouseOverInfo = new javax.swing.JCheckBox();
         jIncludeSupport = new javax.swing.JCheckBox();
         jLabel3 = new javax.swing.JLabel();
+        jDisplayWatchtower = new javax.swing.JCheckBox();
+        jDisplayChurch = new javax.swing.JCheckBox();
         jROIPanel = new javax.swing.JPanel();
         jLabel6 = new javax.swing.JLabel();
         jROIBox = new javax.swing.JComboBox();
@@ -986,11 +892,13 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         jSettingsScrollPane = new javax.swing.JScrollPane();
 
         jExportDialog.setTitle("Export");
-        jExportDialog.setMinimumSize(new java.awt.Dimension(560, 370));
+        jExportDialog.setMinimumSize(new java.awt.Dimension(560, 500));
+        jExportDialog.setPreferredSize(new java.awt.Dimension(560, 500));
+        jExportDialog.setResizable(false);
         jExportDialog.getContentPane().setLayout(new java.awt.GridBagLayout());
 
-        jScrollPane1.setMinimumSize(new java.awt.Dimension(100, 100));
-        jScrollPane1.setPreferredSize(new java.awt.Dimension(100, 100));
+        jScrollPane1.setMinimumSize(new java.awt.Dimension(260, 100));
+        jScrollPane1.setPreferredSize(new java.awt.Dimension(260, 100));
 
         jAttackExportTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
@@ -1022,33 +930,33 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         jExportDialog.getContentPane().add(jScrollPane1, gridBagConstraints);
 
         jExportButton.setText("Exportieren");
-        jExportButton.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mouseClicked(java.awt.event.MouseEvent evt) {
+        jExportButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
                 fireExportEvent(evt);
             }
         });
         gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridx = 2;
         gridBagConstraints.gridy = 3;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHEAST;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.LAST_LINE_END;
         gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 5);
         jExportDialog.getContentPane().add(jExportButton, gridBagConstraints);
 
         jCancelExportButton.setText("Abbrechen");
-        jCancelExportButton.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mouseClicked(java.awt.event.MouseEvent evt) {
+        jCancelExportButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
                 fireExportEvent(evt);
             }
         });
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 3;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.LAST_LINE_START;
         gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 5);
         jExportDialog.getContentPane().add(jCancelExportButton, gridBagConstraints);
 
-        jScrollPane4.setMinimumSize(new java.awt.Dimension(100, 100));
-        jScrollPane4.setPreferredSize(new java.awt.Dimension(100, 100));
+        jScrollPane4.setMinimumSize(new java.awt.Dimension(260, 100));
+        jScrollPane4.setPreferredSize(new java.awt.Dimension(260, 100));
 
         jMarkerSetExportTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
@@ -1072,6 +980,7 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 0;
+        gridBagConstraints.gridwidth = 2;
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
         gridBagConstraints.weightx = 1.0;
@@ -1079,8 +988,8 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 5);
         jExportDialog.getContentPane().add(jScrollPane4, gridBagConstraints);
 
-        jScrollPane5.setMinimumSize(new java.awt.Dimension(100, 100));
-        jScrollPane5.setPreferredSize(new java.awt.Dimension(100, 100));
+        jScrollPane5.setMinimumSize(new java.awt.Dimension(260, 100));
+        jScrollPane5.setPreferredSize(new java.awt.Dimension(260, 100));
 
         jReportSetExportTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
@@ -1111,8 +1020,8 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 5);
         jExportDialog.getContentPane().add(jScrollPane5, gridBagConstraints);
 
-        jScrollPane6.setMinimumSize(new java.awt.Dimension(100, 100));
-        jScrollPane6.setPreferredSize(new java.awt.Dimension(100, 100));
+        jScrollPane6.setMinimumSize(new java.awt.Dimension(260, 100));
+        jScrollPane6.setPreferredSize(new java.awt.Dimension(260, 100));
 
         jNoteSetExportTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
@@ -1136,6 +1045,7 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 1;
+        gridBagConstraints.gridwidth = 2;
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
         gridBagConstraints.weightx = 1.0;
@@ -1143,8 +1053,8 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 5);
         jExportDialog.getContentPane().add(jScrollPane6, gridBagConstraints);
 
-        jScrollPane7.setMinimumSize(new java.awt.Dimension(100, 100));
-        jScrollPane7.setPreferredSize(new java.awt.Dimension(100, 100));
+        jScrollPane7.setMinimumSize(new java.awt.Dimension(260, 100));
+        jScrollPane7.setPreferredSize(new java.awt.Dimension(260, 100));
 
         jTroopSetExportTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
@@ -1175,41 +1085,100 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 5);
         jExportDialog.getContentPane().add(jScrollPane7, gridBagConstraints);
 
-        jPanel5.setPreferredSize(new java.awt.Dimension(100, 100));
+        jPanel5.setPreferredSize(new java.awt.Dimension(260, 100));
+        jPanel5.setLayout(new java.awt.GridBagLayout());
 
-        jExportTags.setText("Gruppen exportieren");
+        jExportTags.setText("Gruppen");
+        jExportTags.setMaximumSize(new java.awt.Dimension(2147483647, 2147483647));
+        jExportTags.setMinimumSize(new java.awt.Dimension(130, 24));
+        jExportTags.setPreferredSize(new java.awt.Dimension(130, 24));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 0;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.PAGE_START;
+        gridBagConstraints.weightx = 1.0;
+        jPanel5.add(jExportTags, gridBagConstraints);
 
-        jExportForms.setText("Zeichnungen exportieren");
+        jExportForms.setText("Zeichnungen");
+        jExportForms.setMaximumSize(new java.awt.Dimension(2147483647, 2147483647));
+        jExportForms.setMinimumSize(new java.awt.Dimension(130, 24));
+        jExportForms.setPreferredSize(new java.awt.Dimension(130, 24));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.PAGE_START;
+        gridBagConstraints.weightx = 1.0;
+        jPanel5.add(jExportForms, gridBagConstraints);
 
-        jExportChurches.setText("Kirchen exportieren");
+        jExportVillageInformation.setText("Dorfinfos");
+        jExportVillageInformation.setToolTipText("Enthält Gebäudeinfos (z.B. Kichrche, Wachturm)");
+        jExportVillageInformation.setMaximumSize(new java.awt.Dimension(2147483647, 2147483647));
+        jExportVillageInformation.setMinimumSize(new java.awt.Dimension(130, 24));
+        jExportVillageInformation.setPreferredSize(new java.awt.Dimension(130, 24));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 2;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.PAGE_START;
+        gridBagConstraints.weightx = 1.0;
+        jPanel5.add(jExportVillageInformation, gridBagConstraints);
 
-        javax.swing.GroupLayout jPanel5Layout = new javax.swing.GroupLayout(jPanel5);
-        jPanel5.setLayout(jPanel5Layout);
-        jPanel5Layout.setHorizontalGroup(
-            jPanel5Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel5Layout.createSequentialGroup()
-                .addContainerGap()
-                .addGroup(jPanel5Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jExportForms, javax.swing.GroupLayout.DEFAULT_SIZE, 172, Short.MAX_VALUE)
-                    .addComponent(jExportTags, javax.swing.GroupLayout.DEFAULT_SIZE, 172, Short.MAX_VALUE)
-                    .addComponent(jExportChurches, javax.swing.GroupLayout.DEFAULT_SIZE, 172, Short.MAX_VALUE))
-                .addContainerGap())
-        );
-        jPanel5Layout.setVerticalGroup(
-            jPanel5Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel5Layout.createSequentialGroup()
-                .addContainerGap()
-                .addComponent(jExportTags)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jExportForms)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jExportChurches)
-                .addContainerGap(18, Short.MAX_VALUE))
-        );
+        jExportStdAttacks.setText("Standardangriffe");
+        jExportStdAttacks.setMaximumSize(new java.awt.Dimension(2147483647, 2147483647));
+        jExportStdAttacks.setMinimumSize(new java.awt.Dimension(130, 24));
+        jExportStdAttacks.setPreferredSize(new java.awt.Dimension(130, 24));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 3;
+        gridBagConstraints.gridwidth = 2;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.PAGE_START;
+        gridBagConstraints.weightx = 1.0;
+        jPanel5.add(jExportStdAttacks, gridBagConstraints);
+
+        jExportFarminfos.setText("Farminfos");
+        jExportFarminfos.setMaximumSize(new java.awt.Dimension(2147483647, 2147483647));
+        jExportFarminfos.setMinimumSize(new java.awt.Dimension(130, 24));
+        jExportFarminfos.setPreferredSize(new java.awt.Dimension(130, 24));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.PAGE_START;
+        gridBagConstraints.weightx = 1.0;
+        jPanel5.add(jExportFarminfos, gridBagConstraints);
+
+        jExportSplits.setText("Split Sets");
+        jExportSplits.setToolTipText("Enthält Gebäudeinfos (z.B. Kichrche, Wachturm)");
+        jExportSplits.setMaximumSize(new java.awt.Dimension(2147483647, 2147483647));
+        jExportSplits.setMinimumSize(new java.awt.Dimension(130, 24));
+        jExportSplits.setPreferredSize(new java.awt.Dimension(130, 24));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 2;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.PAGE_START;
+        gridBagConstraints.weightx = 1.0;
+        jPanel5.add(jExportSplits, gridBagConstraints);
+
+        jExportSOS.setText("SOS Requests");
+        jExportSOS.setMaximumSize(new java.awt.Dimension(2147483647, 2147483647));
+        jExportSOS.setMinimumSize(new java.awt.Dimension(130, 24));
+        jExportSOS.setPreferredSize(new java.awt.Dimension(130, 24));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 0;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.PAGE_START;
+        gridBagConstraints.weightx = 1.0;
+        jPanel5.add(jExportSOS, gridBagConstraints);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 2;
+        gridBagConstraints.gridwidth = 2;
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
         gridBagConstraints.weightx = 1.0;
@@ -1424,7 +1393,7 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         jRefreshButton.setPreferredSize(new java.awt.Dimension(30, 30));
         jRefreshButton.addMouseListener(new java.awt.event.MouseAdapter() {
             public void mouseClicked(java.awt.event.MouseEvent evt) {
-                fireRefreshMapEvent(evt);
+                fireReloadMapKoordinatesEvent(evt);
             }
         });
 
@@ -1562,7 +1531,6 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         jShowMapPopup.setText("Kartenpopup anzeigen");
         jShowMapPopup.setToolTipText("Zeigt Informationen über das Dorf unter dem Mauszeiger an");
         jShowMapPopup.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
-        jShowMapPopup.setOpaque(false);
         jShowMapPopup.addChangeListener(new javax.swing.event.ChangeListener() {
             public void stateChanged(javax.swing.event.ChangeEvent evt) {
                 fireShowMapPopupChangedEvent(evt);
@@ -1596,7 +1564,6 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         jMapPanel.add(jLabel12, gridBagConstraints);
 
         jGraphicPacks.setMaximumSize(new java.awt.Dimension(28, 20));
-        jGraphicPacks.setMinimumSize(new java.awt.Dimension(28, 20));
         jGraphicPacks.addItemListener(new java.awt.event.ItemListener() {
             public void itemStateChanged(java.awt.event.ItemEvent evt) {
                 fireGraphicPackChangedEvent(evt);
@@ -1614,7 +1581,6 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         jHighlightTribeVillages.setText("Spielerdörfer hervorheben");
         jHighlightTribeVillages.setToolTipText("Markiert im Kartenausschnitt alle Dörfer des Spielers, dessen Dorf unter dem Mauszeiger liegt");
         jHighlightTribeVillages.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
-        jHighlightTribeVillages.setOpaque(false);
         jHighlightTribeVillages.addChangeListener(new javax.swing.event.ChangeListener() {
             public void stateChanged(javax.swing.event.ChangeEvent evt) {
                 fireHighlightTribeVillagesChangedEvent(evt);
@@ -1632,7 +1598,6 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         jShowRuler.setText("Lineal anzeigen");
         jShowRuler.setToolTipText("Zeichnet ein Koordinatenlineal am Kartenrand");
         jShowRuler.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
-        jShowRuler.setOpaque(false);
         jShowRuler.addChangeListener(new javax.swing.event.ChangeListener() {
             public void stateChanged(javax.swing.event.ChangeEvent evt) {
                 fireShowRulerChangedEvent(evt);
@@ -1706,7 +1671,6 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         jShowMouseOverInfo.setText("MouseOver Infos anzeigen");
         jShowMouseOverInfo.setToolTipText("Zeigt Informationen über das Dorf unter dem Mauszeiger an");
         jShowMouseOverInfo.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
-        jShowMouseOverInfo.setOpaque(false);
         jShowMouseOverInfo.addChangeListener(new javax.swing.event.ChangeListener() {
             public void stateChanged(javax.swing.event.ChangeEvent evt) {
                 fireShowMouseOverInfoEvent(evt);
@@ -1723,7 +1687,6 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
 
         jIncludeSupport.setText("Unterstützungen einbeziehen");
         jIncludeSupport.setToolTipText(" Unterstützungen bei den MouseOver Infos und bei der Anzeige der Truppendichte mit einbeziehen");
-        jIncludeSupport.setOpaque(false);
         jIncludeSupport.addChangeListener(new javax.swing.event.ChangeListener() {
             public void stateChanged(javax.swing.event.ChangeEvent evt) {
                 fireShowHideSupportsEvent(evt);
@@ -1739,11 +1702,46 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         jMapPanel.add(jIncludeSupport, gridBagConstraints);
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 7;
+        gridBagConstraints.gridy = 9;
         gridBagConstraints.gridwidth = 5;
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         gridBagConstraints.weighty = 1.0;
         jMapPanel.add(jLabel3, gridBagConstraints);
+
+        jDisplayWatchtower.setText("Wachturmradien Zeichnen");
+        jDisplayWatchtower.setToolTipText("Wachturmradien Zeichnen");
+        jDisplayWatchtower.setActionCommand("");
+        jDisplayWatchtower.setAutoscrolls(true);
+        jDisplayWatchtower.addChangeListener(new javax.swing.event.ChangeListener() {
+            public void stateChanged(javax.swing.event.ChangeEvent evt) {
+                fireDisplayWatchtower(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 8;
+        gridBagConstraints.gridwidth = 5;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
+        gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 5);
+        jMapPanel.add(jDisplayWatchtower, gridBagConstraints);
+
+        jDisplayChurch.setText("Kirchenradien Zeichnen");
+        jDisplayChurch.setToolTipText("Kirchenradien Zeichnen");
+        jDisplayChurch.setActionCommand("Kirchenradien zeichnen");
+        jDisplayChurch.addChangeListener(new javax.swing.event.ChangeListener() {
+            public void stateChanged(javax.swing.event.ChangeEvent evt) {
+                fireDisplayChurch(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 7;
+        gridBagConstraints.gridwidth = 5;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
+        gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 5);
+        jMapPanel.add(jDisplayChurch, gridBagConstraints);
 
         jROIPanel.setBackground(new java.awt.Color(239, 235, 223));
         jROIPanel.setMaximumSize(new java.awt.Dimension(293, 70));
@@ -1820,12 +1818,12 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
 
         jCurrentPlayerVillages.setToolTipText("Aktives Dorf als Ausgangspunkt für InGame Aktionen");
         jCurrentPlayerVillages.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
-            public void popupMenuCanceled(javax.swing.event.PopupMenuEvent evt) {
+            public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent evt) {
             }
             public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent evt) {
                 fireCurrentPlayerVillagePopupEvent(evt);
             }
-            public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent evt) {
+            public void popupMenuCanceled(javax.swing.event.PopupMenuEvent evt) {
             }
         });
 
@@ -1925,14 +1923,14 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
         setTitle("DS Workbench 0.92b");
         setBackground(new java.awt.Color(225, 213, 190));
-        addWindowListener(new java.awt.event.WindowAdapter() {
-            public void windowClosing(java.awt.event.WindowEvent evt) {
-                fireDSWorkbenchClosingEvent(evt);
-            }
-        });
         addComponentListener(new java.awt.event.ComponentAdapter() {
             public void componentResized(java.awt.event.ComponentEvent evt) {
                 fireFrameResizedEvent(evt);
+            }
+        });
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            public void windowClosing(java.awt.event.WindowEvent evt) {
+                fireDSWorkbenchClosingEvent(evt);
             }
         });
 
@@ -1990,7 +1988,7 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel4Layout.createSequentialGroup()
                 .addComponent(jMinimapPanel, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jSettingsScrollPane, javax.swing.GroupLayout.DEFAULT_SIZE, 405, Short.MAX_VALUE))
+                .addComponent(jSettingsScrollPane, javax.swing.GroupLayout.DEFAULT_SIZE, 406, Short.MAX_VALUE))
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel4Layout.createSequentialGroup()
                 .addComponent(jMapPanelHolder, javax.swing.GroupLayout.DEFAULT_SIZE, 689, Short.MAX_VALUE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
@@ -2003,78 +2001,73 @@ public class DSWorkbenchMainFrame extends JRibbonFrame implements
   /**
    * Update map position
    */
-private void fireRefreshMapEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireRefreshMapEvent
-  double cx = UIHelper.parseIntFromField(jCenterX, (int) dCenterX);
-  double cy = UIHelper.parseIntFromField(jCenterY, (int) dCenterY);
-  if (ServerSettings.getSingleton().getCoordType() != 2) {
-    int[] hier = DSCalculator.hierarchicalToXy((int) cx, (int) cy, 12);
-    if (hier != null) {
-      dCenterX = hier[0];
-      dCenterY = hier[1];
+private void fireReloadMapKoordinatesEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireReloadMapKoordinatesEvent
+  int centerX = UIHelper.parseIntFromField(jCenterX, (int) dCenterX);
+  int centerY = UIHelper.parseIntFromField(jCenterY, (int) dCenterY);
+  centerPosition(centerX, centerY);    
+}//GEN-LAST:event_fireReloadMapKoordinatesEvent
+
+private void refreshMap() {
+  //ensure that within map range
+  Rectangle mapDim = ServerSettings.getSingleton().getMapDimension();
+  if(dCenterX < mapDim.getMinX() || dCenterX > mapDim.getMaxX() || dCenterY < mapDim.getMinY() || dCenterY > mapDim.getMaxX()) {
+    //find out where we tried to leaf map and set these valuese to max / min
+    if(dCenterX < mapDim.getMinX()) {
+      dCenterX = (int) mapDim.getMinX();
+      jCenterX.setText(Integer.toString((int) dCenterX));
+    } else if(dCenterX > mapDim.getMaxX()) {
+      dCenterX = (int) mapDim.getMaxX();
+      jCenterX.setText(Integer.toString((int) dCenterX));
     }
-  } else {
-    dCenterX = cx;
-    dCenterY = cy;
+    
+    if(dCenterY < mapDim.getMinY()) {
+      dCenterY = (int) mapDim.getMinY();
+      jCenterY.setText(Integer.toString((int) dCenterY));
+    } else if(dCenterY > mapDim.getMaxX()) {
+      dCenterY = (int) mapDim.getMaxX();
+      jCenterY.setText(Integer.toString((int) dCenterY));
+    }
   }
+  
   double w = (double) MapPanel.getSingleton().getWidth() / GlobalOptions.getSkin().getBasicFieldWidth() * dZoomFactor;
   double h = (double) MapPanel.getSingleton().getHeight() / GlobalOptions.getSkin().getBasicFieldHeight() * dZoomFactor;
   MinimapPanel.getSingleton().setSelection((int) Math.floor(dCenterX), (int) Math.floor(dCenterY), (int) Math.rint(w), (int) Math.rint(h));
   MapPanel.getSingleton().updateMapPosition(dCenterX, dCenterY, true);
-}//GEN-LAST:event_fireRefreshMapEvent
-
+}
   /**
    * Update map movement
    */
 private void fireMoveMapEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireMoveMapEvent
   double cx = UIHelper.parseIntFromField(jCenterX, (int) dCenterX);
   double cy = UIHelper.parseIntFromField(jCenterY, (int) dCenterY);
-
-  if (ServerSettings.getSingleton().getCoordType() != 2) {
-    int[] hier = DSCalculator.hierarchicalToXy((int) cx, (int) cy, 12);
-    if (hier != null) {
-      cx = hier[0];
-      cy = hier[1];
-    }
-  }
+  double mapFieldsH = MapPanel.getSingleton().getHeight() /
+      (GlobalOptions.getSkin().getBasicFieldHeight() * dZoomFactor);
+  double mapFieldsW = MapPanel.getSingleton().getWidth() /
+      (GlobalOptions.getSkin().getBasicFieldWidth() * dZoomFactor);
 
   if (evt.getSource() == jMoveN) {
-    cy -= (double) MapPanel.getSingleton().getHeight() / (double) GlobalOptions.getSkin().getBasicFieldHeight() * dZoomFactor;
+    cy -= mapFieldsH;
   } else if (evt.getSource() == jMoveNE) {
-    cx += (double) MapPanel.getSingleton().getWidth() / (double) GlobalOptions.getSkin().getBasicFieldWidth() * dZoomFactor;
-    cy -= (double) MapPanel.getSingleton().getWidth() / (double) GlobalOptions.getSkin().getBasicFieldHeight() * dZoomFactor;
+    cx += mapFieldsW;
+    cy -= mapFieldsH;
   } else if (evt.getSource() == jMoveE) {
-    cx += (double) MapPanel.getSingleton().getWidth() / (double) GlobalOptions.getSkin().getBasicFieldHeight() * dZoomFactor;
+    cx += mapFieldsW;
   } else if (evt.getSource() == jMoveSE) {
-    cx += (double) MapPanel.getSingleton().getWidth() / (double) GlobalOptions.getSkin().getBasicFieldWidth() * dZoomFactor;
-    cy += (double) MapPanel.getSingleton().getWidth() / (double) GlobalOptions.getSkin().getBasicFieldHeight() * dZoomFactor;
+    cx += mapFieldsW;
+    cy += mapFieldsH;
   } else if (evt.getSource() == jMoveS) {
-    cy += (double) MapPanel.getSingleton().getHeight() / (double) GlobalOptions.getSkin().getBasicFieldHeight() * dZoomFactor;
+    cy += mapFieldsH;
   } else if (evt.getSource() == jMoveSW) {
-    cx -= (double) MapPanel.getSingleton().getWidth() / (double) GlobalOptions.getSkin().getBasicFieldWidth() * dZoomFactor;
-    cy += (double) MapPanel.getSingleton().getWidth() / (double) GlobalOptions.getSkin().getBasicFieldHeight() * dZoomFactor;
+    cx -= mapFieldsW;
+    cy += mapFieldsH;
   } else if (evt.getSource() == jMoveW) {
-    cx -= (double) MapPanel.getSingleton().getWidth() / (double) GlobalOptions.getSkin().getBasicFieldHeight() * dZoomFactor;
+    cx -= mapFieldsH;
   } else if (evt.getSource() == jMoveNW) {
-    cx -= (double) MapPanel.getSingleton().getWidth() / (double) GlobalOptions.getSkin().getBasicFieldWidth() * dZoomFactor;
-    cy -= (double) MapPanel.getSingleton().getWidth() / (double) GlobalOptions.getSkin().getBasicFieldHeight() * dZoomFactor;
+    cx -= mapFieldsW;
+    cy -= mapFieldsH;
   }
 
-  if (ServerSettings.getSingleton().getCoordType() != 2) {
-    int[] hier = DSCalculator.xyToHierarchical((int) cx, (int) cy);
-    if (hier != null) {
-      cx = hier[0];
-      cy = hier[1];
-    }
-  }
-
-  jCenterX.setText(Integer.toString((int) Math.floor(cx)));
-  jCenterY.setText(Integer.toString((int) Math.floor(cy)));
-  dCenterX = cx;
-  dCenterY = cy;
-  MapPanel.getSingleton().updateMapPosition(dCenterX, dCenterY);
-  double w = (double) MapPanel.getSingleton().getWidth() / GlobalOptions.getSkin().getBasicFieldWidth() * dZoomFactor;
-  double h = (double) MapPanel.getSingleton().getHeight() / GlobalOptions.getSkin().getBasicFieldHeight() * dZoomFactor;
-  MinimapPanel.getSingleton().setSelection((int) Math.floor(cx), (int) Math.floor(cy), (int) Math.rint(w), (int) Math.rint(h));
+  centerPosition(cx, cy);
 }//GEN-LAST:event_fireMoveMapEvent
 
   /**
@@ -2100,45 +2093,11 @@ private void fireZoomEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fir
 }//GEN-LAST:event_fireZoomEvent
 
   public synchronized void zoomIn() {
-    dZoomFactor += 1.0 / 10.0;
-    checkZoomRange();
-
-    dZoomFactor = Double.parseDouble(NumberFormat.getInstance().format(dZoomFactor).replaceAll(",", "."));
-    double w = (double) MapPanel.getSingleton().getWidth() / GlobalOptions.getSkin().getBasicFieldWidth() * dZoomFactor;
-    double h = (double) MapPanel.getSingleton().getHeight() / GlobalOptions.getSkin().getBasicFieldHeight() * dZoomFactor;
-    int xPos = UIHelper.parseIntFromField(jCenterX, (int) dCenterX);
-    int yPos = UIHelper.parseIntFromField(jCenterY, (int) dCenterY);
-    if (ServerSettings.getSingleton().getCoordType() != 2) {
-      int[] hier = DSCalculator.hierarchicalToXy(xPos, yPos, 12);
-      if (hier != null) {
-        xPos = hier[0];
-        yPos = hier[1];
-      }
-    }
-    MinimapPanel.getSingleton().setSelection(xPos, yPos, (int) Math.rint(w), (int) Math.rint(h));
-    MapPanel.getSingleton().updateMapPosition(xPos, yPos, true);
+    setZoom(getZoomFactor() * dZoomInOutFactor);
   }
 
   public synchronized void zoomOut() {
-    dZoomFactor -= 1.0 / 10.0;
-    checkZoomRange();
-
-    dZoomFactor = Double.parseDouble(NumberFormat.getInstance().format(dZoomFactor).replaceAll(",", "."));
-    double w = (double) MapPanel.getSingleton().getWidth() / GlobalOptions.getSkin().getBasicFieldWidth() * dZoomFactor;
-    double h = (double) MapPanel.getSingleton().getHeight() / GlobalOptions.getSkin().getBasicFieldHeight() * dZoomFactor;
-    int xPos = UIHelper.parseIntFromField(jCenterX, (int) dCenterX);
-    int yPos = UIHelper.parseIntFromField(jCenterY, (int) dCenterY);
-
-    if (ServerSettings.getSingleton().getCoordType() != 2) {
-      int[] hier = DSCalculator.hierarchicalToXy(xPos, yPos, 12);
-      if (hier != null) {
-        xPos = hier[0];
-        yPos = hier[1];
-      }
-    }
-
-    MinimapPanel.getSingleton().setSelection(xPos, yPos, (int) Math.rint(w), (int) Math.rint(h));
-    MapPanel.getSingleton().updateMapPosition(xPos, yPos, true);
+    setZoom(getZoomFactor() / dZoomInOutFactor);
   }
 
   /*
@@ -2154,7 +2113,7 @@ private void fireCenterVillageIngameEvent(java.awt.event.MouseEvent evt) {//GEN-
 
   Village v = (Village) jCurrentPlayerVillages.getSelectedItem();
   if (v != null) {
-    BrowserCommandSender.centerVillage(v);
+    BrowserInterface.centerVillage(v);
   }
 }//GEN-LAST:event_fireCenterVillageIngameEvent
 
@@ -2165,9 +2124,7 @@ private void fireCenterCurrentPosInGameEvent(java.awt.event.MouseEvent evt) {//G
   if (!jCenterCoordinateIngame.isEnabled()) {
     return;
   }
-  BrowserCommandSender.centerCoordinate(
-          UIHelper.parseIntFromField(jCenterX, (int) dCenterX),
-          UIHelper.parseIntFromField(jCenterY, (int) dCenterY));
+  BrowserInterface.centerCoordinate((int) dCenterX, (int) dCenterY);
 }//GEN-LAST:event_fireCenterCurrentPosInGameEvent
 
 private void fireCurrentPlayerVillagePopupEvent(javax.swing.event.PopupMenuEvent evt) {//GEN-FIRST:event_fireCurrentPlayerVillagePopupEvent
@@ -2226,7 +2183,7 @@ private void fireCreateMapShotEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:
 
 }//GEN-LAST:event_fireCreateMapShotEvent
 
-private void fireExportEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireExportEvent
+private void fireExportEvent(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_fireExportEvent
   if (evt.getSource() == jExportButton) {
     //do export
     logger.debug("Building export data");
@@ -2288,7 +2245,11 @@ private void fireExportEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_f
     needExport |= !troopSetsToExport.isEmpty();
     needExport |= jExportForms.isSelected();
     needExport |= !noteSetsToExport.isEmpty();
-    needExport |= jExportChurches.isSelected();
+    needExport |= jExportVillageInformation.isSelected();
+    needExport |= jExportFarminfos.isSelected();
+    needExport |= jExportSOS.isSelected();
+    needExport |= jExportSplits.isSelected();
+    needExport |= jExportStdAttacks.isSelected();
 
     if (!needExport) {
       JOptionPaneHelper.showWarningBox(jExportDialog, "Keine Daten für den Export gewählt", "Export");
@@ -2300,7 +2261,7 @@ private void fireExportEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_f
       dir = ".";
     }
 
-    JFileChooser chooser = null;
+    JFileChooser chooser;
     try {
       chooser = new JFileChooser(dir);
     } catch (Exception e) {
@@ -2337,44 +2298,56 @@ private void fireExportEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_f
             return;
           }
         }
-
-        String exportString = "<export>\n";
+        
+        Document doc = JDomUtils.createDocument();
+        Element backup = doc.getRootElement();
         if (!plansToExport.isEmpty()) {
-          exportString += AttackManager.getSingleton().getExportData(plansToExport);
+          backup.addContent(AttackManager.getSingleton().getExportData(plansToExport));
         }
         if (!setsToExport.isEmpty()) {
-          exportString += MarkerManager.getSingleton().getExportData(setsToExport);
+          backup.addContent(MarkerManager.getSingleton().getExportData(setsToExport));
         }
         if (!reportsToExport.isEmpty()) {
-          exportString += ReportManager.getSingleton().getExportData(reportsToExport);
+          backup.addContent(ReportManager.getSingleton().getExportData(reportsToExport));
         }
         if (jExportTags.isSelected()) {
-          exportString += TagManager.getSingleton().getExportData(null);
+          backup.addContent(TagManager.getSingleton().getExportData(null));
         }
 
         if (!troopSetsToExport.isEmpty()) {
-          exportString += TroopsManager.getSingleton().getExportData(troopSetsToExport);
+          backup.addContent(TroopsManager.getSingleton().getExportData(troopSetsToExport));
         }
 
         if (jExportForms.isSelected()) {
-          exportString += FormManager.getSingleton().getExportData(null);
+          backup.addContent(FormManager.getSingleton().getExportData(null));
         }
 
         if (!noteSetsToExport.isEmpty()) {
-          exportString += NoteManager.getSingleton().getExportData(noteSetsToExport);
+          backup.addContent(NoteManager.getSingleton().getExportData(noteSetsToExport));
         }
 
-        if (jExportChurches.isSelected()) {
-          exportString += ChurchManager.getSingleton().getExportData(null);
+        if (jExportVillageInformation.isSelected()) {
+          backup.addContent(KnownVillageManager.getSingleton().getExportData(null));
         }
 
-        exportString += "</export>";
+        if (jExportFarminfos.isSelected()) {
+          backup.addContent(FarmManager.getSingleton().getExportData(null));
+        }
+
+        if (jExportSOS.isSelected()) {
+          backup.addContent(SOSManager.getSingleton().getExportData(null));
+        }
+
+        if (jExportSplits.isSelected()) {
+          backup.addContent(SplitSetHelper.getExportData());
+        }
+
+        if (jExportStdAttacks.isSelected()) {
+          backup.addContent(StandardAttackManager.getSingleton().getExportData(null));
+        }
+
         logger.debug("Writing data to disk");
-        FileWriter w = new FileWriter(target);
-        w.write(exportString);
-        logger.debug("Finalizing writer");
-        w.flush();
-        w.close();
+        JDomUtils.saveDocument(doc, file);
         logger.debug("Export finished successfully");
         JOptionPaneHelper.showInformationBox(jExportDialog, "Export erfolgreich beendet.", "Export");
       } catch (Exception e) {
@@ -2452,7 +2425,7 @@ private void fireROISelectedEvent(java.awt.event.ItemEvent evt) {//GEN-FIRST:eve
       String[] pos = item.trim().split("\\|");
       jCenterX.setText(pos[0]);
       jCenterY.setText(pos[1]);
-      fireRefreshMapEvent(null);
+      fireReloadMapKoordinatesEvent(null);
     } catch (Exception ignored) {
     }
   }
@@ -2470,7 +2443,8 @@ private void fireDSWorkbenchClosingEvent(java.awt.event.WindowEvent evt) {//GEN-
     logger.error("Failed to store profile settings on shutdown");
   }
   dispose();
-  System.exit(0);
+  new Thread(MainShutdownHook.getSingleton()).run();
+  JOptionPaneHelper.showInformationBox(this, "Beende ...", "Beende ...");
 }//GEN-LAST:event_fireDSWorkbenchClosingEvent
 
 private void fireGraphicPackChangedEvent(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_fireGraphicPackChangedEvent
@@ -2509,16 +2483,8 @@ private void fireRadarValueChangedEvent(javax.swing.event.CaretEvent evt) {//GEN
 private void fireCheckForVillagePositionEvent(java.awt.event.FocusEvent evt) {//GEN-FIRST:event_fireCheckForVillagePositionEvent
   List<Village> parsed = PluginManager.getSingleton().executeVillageParser(jCenterX.getText());
   if (!parsed.isEmpty()) {
-    if (ServerSettings.getSingleton().getCoordType() != 2) {
-      int[] hier = DSCalculator.xyToHierarchical((int) parsed.get(0).getX(), (int) parsed.get(0).getY());
-      if (hier != null) {
-        jCenterY.setText(Integer.toString(hier[1]));
-        jCenterX.setText(Integer.toString(hier[0]));
-      }
-    } else {
-      jCenterY.setText(Short.toString(parsed.get(0).getY()));
-      jCenterX.setText(Short.toString(parsed.get(0).getX()));
-    }
+    jCenterY.setText(Short.toString(parsed.get(0).getY()));
+    jCenterX.setText(Short.toString(parsed.get(0).getX()));
   }
 }//GEN-LAST:event_fireCheckForVillagePositionEvent
 
@@ -2545,6 +2511,14 @@ private void fireChangeClipboardWatchEvent(java.awt.event.MouseEvent evt) {//GEN
       GlobalOptions.addProperty("include.support", Boolean.toString(jIncludeSupport.isSelected()));
       MapPanel.getSingleton().getMapRenderer().initiateRedraw(MapRenderer.TROOP_LAYER);
     }//GEN-LAST:event_fireShowHideSupportsEvent
+
+    private void fireDisplayChurch(javax.swing.event.ChangeEvent evt) {//GEN-FIRST:event_fireDisplayChurch
+        GlobalOptions.addProperty("show.church", Boolean.toString(jDisplayChurch.isSelected()));
+    }//GEN-LAST:event_fireDisplayChurch
+
+    private void fireDisplayWatchtower(javax.swing.event.ChangeEvent evt) {//GEN-FIRST:event_fireDisplayWatchtower
+        GlobalOptions.addProperty("show.watchtower", Boolean.toString(jDisplayWatchtower.isSelected()));
+    }//GEN-LAST:event_fireDisplayWatchtower
 
   public void doExit() {
     fireDSWorkbenchClosingEvent(null);
@@ -2677,40 +2651,52 @@ private void fireChangeClipboardWatchEvent(java.awt.event.MouseEvent evt) {//GEN
   }
 
   private String performImport(File pSource, String pExtension) {
-    boolean attackImported = AttackManager.getSingleton().importData(pSource, pExtension);
-    boolean markersImported = MarkerManager.getSingleton().importData(pSource, pExtension);
-    boolean reportsImported = ReportManager.getSingleton().importData(pSource, pExtension);
-    boolean tagImported = TagManager.getSingleton().importData(pSource, pExtension);
-    boolean troopsImported = TroopsManager.getSingleton().importData(pSource, null);
-    boolean formsImported = FormManager.getSingleton().importData(pSource, pExtension);
-    boolean notesImported = NoteManager.getSingleton().importData(pSource, pExtension);
+    int importedNum[] = new int[20];
+    Element data;
+    try {
+        Document doc = JDomUtils.getDocument(pSource);
+        data = doc.getRootElement();
+    } catch(Exception e) {
+        logger.error("Es ist ein Fehler aufgetreten", e);
+        return("Fehler " + e.getMessage());
+    }
+    importedNum[0] = AttackManager.getSingleton().importData(data, pExtension);
+    importedNum[1] = StandardAttackManager.getSingleton().importData(data, pExtension);
+    importedNum[2] = FarmManager.getSingleton().importData(data, pExtension);
+    importedNum[3] = FormManager.getSingleton().importData(data, pExtension);
+    importedNum[4] = MarkerManager.getSingleton().importData(data, pExtension);
+    importedNum[5] = NoteManager.getSingleton().importData(data, pExtension);
+    importedNum[6] = ReportManager.getSingleton().importData(data, pExtension);
+    importedNum[7] = SOSManager.getSingleton().importData(data, pExtension);
+    importedNum[8] = TagManager.getSingleton().importData(data, pExtension);
+    importedNum[9] = TroopsManager.getSingleton().importData(data, null);
+    importedNum[10] = KnownVillageManager.getSingleton().importData(data, pExtension);
+    importedNum[11] = SplitSetHelper.importData(data, pExtension);
+    
+    String names[] = new String[]{"Angriffe", "Standard-Angriffe", "Farmen",
+        "Formen", "Markierungen", "Notizen", "Berichte", "SOS-Infos", "Gruppen",
+        "Truppen", "Dorfinfos", "Splits"};
+    boolean allOk = true;
+    int sum = 0;
+    for(int i = 0; i < names.length; i++) {
+        if(importedNum[i] < 0) {
+            allOk = false;
+            sum += (-1) * importedNum[i] - 1;
+        } else {
+            sum += importedNum[i];
+        }
+    }
+    
+    StringBuilder message = new StringBuilder();
+    message.append("Import ").append(allOk?"erfolgreich ":"").append("beendet.\n");
 
-    String message = "Import beendet.\n";
-    if (!attackImported) {
-      message += "  * Fehler beim Import der Angriffe\n";
+    for(int i = 0; i < names.length; i++) {
+        if(importedNum[i] < 0) {
+           message.append("Trotz fehler ");
+        }
+        message.append(importedNum[i]).append(" ").append(names[i]).append(" erfolgreich eingelesen\n");
     }
-
-    if (!markersImported) {
-      message += "  * Fehler beim Import der Markierungen\n";
-    }
-    if (!reportsImported) {
-      message += "  * Fehler beim Import der Berichte\n";
-    }
-    if (!tagImported) {
-      message += "  * Fehler beim Import der Tags\n";
-    }
-
-    if (!troopsImported) {
-      message += "  * Fehler beim Import der Truppen\n";
-    }
-
-    if (!formsImported) {
-      message += "  * Fehler beim Import der Formen\n";
-    }
-    if (!notesImported) {
-      message += "  * Fehler beim Import der Notizen\n";
-    }
-    return message;
+    return message.toString();
   }
 
   public void planMapshot() {
@@ -2775,7 +2761,7 @@ private void fireChangeClipboardWatchEvent(java.awt.event.MouseEvent evt) {//GEN
       String[] pos = item.trim().split("\\|");
       jCenterX.setText(pos[0]);
       jCenterY.setText(pos[1]);
-      fireRefreshMapEvent(null);
+      fireReloadMapKoordinatesEvent(null);
     } catch (Exception ignored) {
     }
   }
@@ -2783,12 +2769,13 @@ private void fireChangeClipboardWatchEvent(java.awt.event.MouseEvent evt) {//GEN
   /**
    * Check if zoom factor is valid and correct if needed
    */
+  
   private void checkZoomRange() {
-    if (dZoomFactor <= 0.4) {
-      dZoomFactor = 0.4;
+    if (dZoomFactor <= minZoom) {
+      dZoomFactor = minZoom;
       jZoomOutButton.setEnabled(false);
-    } else if (dZoomFactor >= 3) {
-      dZoomFactor = 3;
+    } else if (dZoomFactor >= maxZoom) {
+      dZoomFactor = maxZoom;
       jZoomInButton.setEnabled(false);
     } else {
       jZoomInButton.setEnabled(true);
@@ -2800,23 +2787,7 @@ private void fireChangeClipboardWatchEvent(java.awt.event.MouseEvent evt) {//GEN
    * Scroll the map
    */
   public void scroll(double pXDir, double pYDir) {
-    dCenterX += pXDir;
-    dCenterY += pYDir;
-    if (ServerSettings.getSingleton().getCoordType() != 2) {
-      int[] hier = DSCalculator.xyToHierarchical((int) dCenterX, (int) dCenterY);
-      if (hier != null) {
-        jCenterX.setText(Integer.toString(hier[0]));
-        jCenterY.setText(Integer.toString(hier[1]));
-      }
-    } else {
-      jCenterX.setText(Integer.toString((int) Math.floor(dCenterX)));
-      jCenterY.setText(Integer.toString((int) Math.floor(dCenterY)));
-    }
-
-    double w = (double) MapPanel.getSingleton().getWidth() / GlobalOptions.getSkin().getBasicFieldWidth() * dZoomFactor;
-    double h = (double) MapPanel.getSingleton().getHeight() / GlobalOptions.getSkin().getBasicFieldHeight() * dZoomFactor;
-    MinimapPanel.getSingleton().setSelection((int) Math.floor(dCenterX), (int) Math.floor(dCenterY), (int) Math.rint(w), (int) Math.rint(h));
-    MapPanel.getSingleton().updateMapPosition(dCenterX, dCenterY);
+    centerPosition(dCenterX + pXDir, dCenterY + pYDir);
   }
 
   /**
@@ -2827,35 +2798,15 @@ private void fireChangeClipboardWatchEvent(java.awt.event.MouseEvent evt) {//GEN
       return;
     }
 
-    if (ServerSettings.getSingleton().getCoordType() != 2) {
-      int[] hier = DSCalculator.xyToHierarchical((int) pVillage.getX(), (int) pVillage.getY());
-      if (hier != null) {
-        jCenterX.setText(Integer.toString(hier[0]));
-        jCenterY.setText(Integer.toString(hier[1]));
-      }
-
-    } else {
-      jCenterX.setText(Integer.toString(pVillage.getX()));
-      jCenterY.setText(Integer.toString(pVillage.getY()));
-    }
-
-    fireRefreshMapEvent(null);
+    centerPosition(pVillage.getX(), pVillage.getY());
   }
 
-  public void centerPosition(int xPos, int yPos) {
-    if (ServerSettings.getSingleton().getCoordType() != 2) {
-      int[] hier = DSCalculator.xyToHierarchical(xPos, yPos);
-      if (hier != null) {
-        jCenterX.setText(Integer.toString(hier[0]));
-        jCenterY.setText(Integer.toString(hier[1]));
-      }
-
-    } else {
-      jCenterX.setText(Integer.toString(xPos));
-      jCenterY.setText(Integer.toString(yPos));
-    }
-
-    fireRefreshMapEvent(null);
+  public void centerPosition(double xPos, double yPos) {
+    dCenterX = xPos;
+    jCenterX.setText(Integer.toString((int) xPos));
+    dCenterY = yPos;
+    jCenterY.setText(Integer.toString((int) yPos));
+    refreshMap();
   }
 
   /**
@@ -2924,52 +2875,52 @@ private void fireChangeClipboardWatchEvent(java.awt.event.MouseEvent evt) {//GEN
      */
   }
 
-  public void fireGroupParserEvent(Hashtable<String, List<Village>> pParserResult) {
+  public void fireGroupParserEvent(HashMap<String, List<Village>> pParserResult) {
     TagManager.getSingleton().invalidate();
     String[] groups = pParserResult.keySet().toArray(new String[]{});
     //NotifierFrame.doNotification("DS Workbench hat " + groups.length + ((groups.length == 1) ? " Dorfgruppe " : " Dorfgruppen ") + "in der Zwischenablage gefunden.", NotifierFrame.NOTIFY_INFO);
     showSuccess("DS Workbench hat " + groups.length + ((groups.length == 1) ? " Dorfgruppe " : " Dorfgruppen ") + "in der Zwischenablage gefunden.");
     if(groups.length!=1){ // Data from group import (all groups for given villages)
-	    //remove all tags
-	    for (String group : groups) {
-	      List<Village> villagesForGroup = pParserResult.get(group);
-	      if (villagesForGroup != null) {
-	        for (Village v : villagesForGroup) {
-	          TagManager.getSingleton().removeTags(v);
-	        }
-	      }
-	    }
-	
-	    for (String group : groups) {
-	      //add new groups
-	      TagManager.getSingleton().addTagFast(group);
-	      //get (added) group
-	      Tag t = TagManager.getSingleton().getTagByName(group);
-	      //add villages to group
-	      List<Village> villagesForGroup = pParserResult.get(group);
-	      if (villagesForGroup != null) {
-	        //set new tags
-	        for (Village v : villagesForGroup) {
-	          t.tagVillage(v.getId());
-	        }
-	      }
-	    }
+        //remove all tags
+        for (String group : groups) {
+          List<Village> villagesForGroup = pParserResult.get(group);
+          if (villagesForGroup != null) {
+            for (Village v : villagesForGroup) {
+              TagManager.getSingleton().removeTags(v);
+            }
+          }
+        }
+    
+        for (String group : groups) {
+          //add new groups
+          TagManager.getSingleton().addTagFast(group);
+          //get (added) group
+          Tag t = TagManager.getSingleton().getTagByName(group);
+          //add villages to group
+          List<Village> villagesForGroup = pParserResult.get(group);
+          if (villagesForGroup != null) {
+            //set new tags
+            for (Village v : villagesForGroup) {
+              t.tagVillage(v.getId());
+            }
+          }
+        }
     } else { // data from troops import (all villages for given group) 
-    	for (String group : groups) {
-	      //add new groups
-	      TagManager.getSingleton().addTagFast(group);
-	      //get (added) group
-	      Tag t = TagManager.getSingleton().getTagByName(group);
-	      t.clearTaggedVillages();
-	      //add villages to group
-	      List<Village> villagesForGroup = pParserResult.get(group);
-	      if (villagesForGroup != null) {
-	        //set new tags
-	        for (Village v : villagesForGroup) {
-	          t.tagVillage(v.getId());
-	        }
-	      }
-	    }    	
+        for (String group : groups) {
+          //add new groups
+          TagManager.getSingleton().addTagFast(group);
+          //get (added) group
+          Tag t = TagManager.getSingleton().getTagByName(group);
+          t.clearTaggedVillages();
+          //add villages to group
+          List<Village> villagesForGroup = pParserResult.get(group);
+          if (villagesForGroup != null) {
+            //set new tags
+            for (Village v : villagesForGroup) {
+              t.tagVillage(v.getId());
+            }
+          }
+        }        
     }
     TagManager.getSingleton().revalidate(true);
   }
@@ -3005,12 +2956,18 @@ private void fireChangeClipboardWatchEvent(java.awt.event.MouseEvent evt) {//GEN
     private javax.swing.JComboBox jCurrentPlayerVillages;
     private javax.swing.JLabel jCurrentToolLabel;
     private javax.swing.JPanel jCustomPanel;
+    private javax.swing.JCheckBox jDisplayChurch;
+    private javax.swing.JCheckBox jDisplayWatchtower;
     private javax.swing.JButton jEnableClipboardWatchButton;
     private javax.swing.JButton jExportButton;
-    private javax.swing.JCheckBox jExportChurches;
     private javax.swing.JDialog jExportDialog;
+    private javax.swing.JCheckBox jExportFarminfos;
     private javax.swing.JCheckBox jExportForms;
+    private javax.swing.JCheckBox jExportSOS;
+    private javax.swing.JCheckBox jExportSplits;
+    private javax.swing.JCheckBox jExportStdAttacks;
     private javax.swing.JCheckBox jExportTags;
+    private javax.swing.JCheckBox jExportVillageInformation;
     private javax.swing.JComboBox jGraphicPacks;
     private javax.swing.JCheckBox jHighlightTribeVillages;
     private javax.swing.JTextField jHourField;
@@ -3081,6 +3038,7 @@ class NotificationHideThread extends Thread {
     setDaemon(true);
   }
 
+  @Override
   public void run() {
     boolean interrupted = false;
     while (true) {
@@ -3099,37 +3057,41 @@ class NotificationHideThread extends Thread {
 
 class BackupTask extends TimerTask {
 
-  private static Logger logger = Logger.getLogger("BackupTask");
+  private static Logger logger = LogManager.getLogger("BackupTask");
 
   @Override
   public void run() {
     try {
       logger.debug("Starting backup");
-      String exportString = "<export>\n";
+      Document doc = JDomUtils.createDocument();
+      Element backup = doc.getRootElement();
       logger.debug(" - Backing up attacks");
-      exportString += AttackManager.getSingleton().getExportData(Arrays.asList(AttackManager.getSingleton().getGroups()));
-      logger.debug(" - Backing up markers");
-      exportString += MarkerManager.getSingleton().getExportData(Arrays.asList(MarkerManager.getSingleton().getGroups()));
-      logger.debug(" - Backing up reports");
-      exportString += ReportManager.getSingleton().getExportData(Arrays.asList(ReportManager.getSingleton().getGroups()));
-      logger.debug(" - Backing up tags");
-      exportString += TagManager.getSingleton().getExportData(null);
-      logger.debug(" - Backing up troops");
-      exportString += TroopsManager.getSingleton().getExportData(Arrays.asList(TroopsManager.getSingleton().getGroups()));
-      logger.debug(" - Backing up forms");
-      exportString += FormManager.getSingleton().getExportData(null);
-      logger.debug(" - Backing up notes");
-      exportString += NoteManager.getSingleton().getExportData(Arrays.asList(NoteManager.getSingleton().getGroups()));
-      logger.debug(" - Backing up churches");
-      exportString += ChurchManager.getSingleton().getExportData(null);
+      backup.addContent(AttackManager.getSingleton().getExportData(Arrays.asList(AttackManager.getSingleton().getGroups())));
+      logger.debug(" - Backing up std-attacks");
+      backup.addContent(StandardAttackManager.getSingleton().getExportData(null));
       logger.debug(" - Backing up farms");
-      exportString += FarmManager.getSingleton().getExportData(null);
-      exportString += "</export>";
+      backup.addContent(FarmManager.getSingleton().getExportData(null));
+      logger.debug(" - Backing up forms");
+      backup.addContent(FormManager.getSingleton().getExportData(null));
+      logger.debug(" - Backing up markers");
+      backup.addContent(MarkerManager.getSingleton().getExportData(Arrays.asList(MarkerManager.getSingleton().getGroups())));
+      logger.debug(" - Backing up notes");
+      backup.addContent(NoteManager.getSingleton().getExportData(Arrays.asList(NoteManager.getSingleton().getGroups())));
+      logger.debug(" - Backing up reports");
+      backup.addContent(ReportManager.getSingleton().getExportData(Arrays.asList(ReportManager.getSingleton().getGroups())));
+      logger.debug(" - Backing up sos-infos");
+      backup.addContent(SOSManager.getSingleton().getExportData(null));
+      logger.debug(" - Backing up tags");
+      backup.addContent(TagManager.getSingleton().getExportData(null));
+      logger.debug(" - Backing up troops");
+      backup.addContent(TroopsManager.getSingleton().getExportData(Arrays.asList(TroopsManager.getSingleton().getGroups())));
+      logger.debug(" - Backing up known-villages");
+      backup.addContent(KnownVillageManager.getSingleton().getExportData(null));
+      logger.debug(" - Backing up split-sets");
+      backup.addContent(SplitSetHelper.getExportData());
+      
       logger.debug("Writing backup data to disk");
-      FileWriter w = new FileWriter(GlobalOptions.getSelectedProfile().getProfileDirectory() + "/backup.xml");
-      w.write(exportString);
-      w.flush();
-      w.close();
+      JDomUtils.saveDocument(doc, GlobalOptions.getSelectedProfile().getProfileDirectory() + "/backup.xml");
       logger.debug("Backup finished successfully");
     } catch (Exception e) {
       logger.error("Failed to create backup", e);

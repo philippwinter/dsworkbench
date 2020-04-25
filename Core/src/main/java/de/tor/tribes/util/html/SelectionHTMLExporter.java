@@ -25,7 +25,6 @@ import de.tor.tribes.types.ext.Village;
 import de.tor.tribes.util.Constants;
 import de.tor.tribes.util.EscapeChars;
 import de.tor.tribes.util.GlobalOptions;
-import de.tor.tribes.util.ServerSettings;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileWriter;
@@ -34,11 +33,12 @@ import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.Collections;
 import java.util.Date;
-import java.util.Enumeration;
-import java.util.Hashtable;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  *
@@ -46,7 +46,7 @@ import org.apache.log4j.Logger;
  */
 public class SelectionHTMLExporter {
 
-    private static Logger logger = Logger.getLogger("SelectionHTMLExporter");
+    private static Logger logger = LogManager.getLogger("SelectionHTMLExporter");
     private static String HEADER = "";
     private static String FOOTER = "";
     private static String ALLY_BLOCK = "";
@@ -140,7 +140,6 @@ public class SelectionHTMLExporter {
 
         String server = GlobalOptions.getSelectedServer();
         String guestBaseURL = ServerManager.getServerURL(server) + "/";
-        SimpleDateFormat f = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
         NumberFormat nf = NumberFormat.getInstance();
         nf.setMinimumFractionDigits(0);
         nf.setMaximumFractionDigits(0);
@@ -152,7 +151,7 @@ public class SelectionHTMLExporter {
         // </editor-fold>
 
         Collections.sort(pVillages, Village.ALLY_TRIBE_VILLAGE_COMPARATOR);
-        Hashtable<Ally, Hashtable<Tribe, List<Village>>> data = new Hashtable<>();
+        HashMap<Ally, HashMap<Tribe, List<Village>>> data = new HashMap<>();
         for (Village v : pVillages) {
             Tribe t = v.getTribe();
             Ally a = null;
@@ -165,9 +164,9 @@ public class SelectionHTMLExporter {
                     a = NoAlly.getSingleton();
                 }
             }
-            Hashtable<Tribe, List<Village>> allyData = data.get(a);
+            HashMap<Tribe, List<Village>> allyData = data.get(a);
             if (allyData == null) {
-                allyData = new Hashtable<>();
+                allyData = new HashMap<>();
                 data.put(a, allyData);
             }
 
@@ -178,10 +177,7 @@ public class SelectionHTMLExporter {
             }
             tribeData.add(v);
         }
-        Enumeration<Ally> allyKeys = data.keys();
-        while (allyKeys.hasMoreElements()) {
-            Ally a = allyKeys.nextElement();
-
+        for(Ally a: data.keySet()) {
             String allyBlock = ALLY_BLOCK;
             //add general data
 
@@ -206,17 +202,11 @@ public class SelectionHTMLExporter {
                 String allyGuest = guestBaseURL;
                 allyGuest += "guest.php?screen=info_ally&id=" + a.getId();
                 allyBlock = allyBlock.replaceAll(ALLY_GUEST_LINK, "<a href=\"" + allyGuest + "\" target=\"_blank\">Gastzugang</a>");
-                if (ServerSettings.getSingleton().getCoordType() == 2) {
-                    String dsRealLink = "http://dsreal.de/index.php?tool=akte&mode=ally&world=" + server + "&id=" + a.getId();
-                    allyBlock = allyBlock.replaceAll(ALLY_DSREAL_LINK, "<a href=\"" + dsRealLink + "\" target=\"_blank\">DS Real</a>");
-                    String twPlusLink = "http://" + server + ".twplus.org/file/ally/" + a.getId() + "/";
-                    allyBlock = allyBlock.replaceAll(ALLY_TWPLUS_LINK, "<a href=\"" + twPlusLink + "\" target=\"_blank\">TWPlus</a>");
-                } else {
-                    //use TWPlus instead of ds real and use empty tw plus ling
-                    String twPlusLink = "http://" + server + ".twplus.org/file/ally/" + a.getId() + "/";
-                    allyBlock = allyBlock.replaceAll(ALLY_DSREAL_LINK, "<a href=\"" + twPlusLink + "\" target=\"_blank\">TWPlus</a>");
-                    allyBlock = allyBlock.replaceAll(ALLY_TWPLUS_LINK, "");
-                }
+                
+                String dsRealLink = "http://dsreal.de/index.php?tool=akte&mode=ally&world=" + server + "&id=" + a.getId();
+                allyBlock = allyBlock.replaceAll(ALLY_DSREAL_LINK, "<a href=\"" + dsRealLink + "\" target=\"_blank\">DS Real</a>");
+                String twPlusLink = "http://" + server + ".twplus.org/file/ally/" + a.getId() + "/";
+                allyBlock = allyBlock.replaceAll(ALLY_TWPLUS_LINK, "<a href=\"" + twPlusLink + "\" target=\"_blank\">TWPlus</a>");
             } else {
                 //no addional information for barbarian or no ally
                 allyBlock = allyBlock.replaceAll(ALLY_GUEST_LINK, "");
@@ -224,12 +214,10 @@ public class SelectionHTMLExporter {
                 allyBlock = allyBlock.replaceAll(ALLY_TWPLUS_LINK, "");
             }
             //build tribe data
-            Hashtable<Tribe, List<Village>> tribeData = data.get(a);
-            Enumeration<Tribe> tribeKeys = tribeData.keys();
             String tribeBlocks = "";
-            while (tribeKeys.hasMoreElements()) {
+            HashMap<Tribe, List<Village>> tribeData = data.get(a);
+            for(Tribe t: tribeData.keySet()) {
                 //build new tribe block
-                Tribe t = tribeKeys.nextElement();
                 String tribeBlock = TRIBE_BLOCK;
                 tribeBlock = tribeBlock.replaceAll(TRIBE_DIV_ID, "TRIBEDIV" + t.getId());
                 tribeBlock = tribeBlock.replaceAll(TRIBE_TAB_ID, "TRIBETAB" + t.getId());
@@ -243,17 +231,11 @@ public class SelectionHTMLExporter {
                     String tribeGuest = guestBaseURL;
                     tribeGuest += "guest.php?screen=info_player&id=" + t.getId();
                     tribeBlock = tribeBlock.replaceAll(TRIBE_GUEST_LINK, "<a href=\"" + tribeGuest + "\" target=\"_blank\">Gastzugang</a>");
-                    if (ServerSettings.getSingleton().getCoordType() == 2) {
-                        String dsRealLink = "http://dsreal.de/index.php?tool=akte&mode=player&world=" + server + "&id=" + t.getId();
-                        tribeBlock = tribeBlock.replaceAll(TRIBE_DSREAL_LINK, "<a href=\"" + dsRealLink + "\" target=\"_blank\">DS Real</a>");
-                        String twPlusLink = "http://" + server + ".twplus.org/file/player/" + t.getId() + "/";
-                        tribeBlock = tribeBlock.replaceAll(TRIBE_TWPLUS_LINK, "<a href=\"" + twPlusLink + "\" target=\"_blank\">TWPlus</a>");
-                    } else {
-                        //use TWPlus instead of ds real and use empty tw plus ling
-                        String twPlusLink = "http://" + server + ".twplus.org/file/player/" + t.getId() + "/";
-                        tribeBlock = tribeBlock.replaceAll(TRIBE_DSREAL_LINK, "<a href=\"" + twPlusLink + "\" target=\"_blank\">TWPlus</a>");
-                        tribeBlock = tribeBlock.replaceAll(TRIBE_TWPLUS_LINK, "");
-                    }
+                    
+                    String dsRealLink = "http://dsreal.de/index.php?tool=akte&mode=player&world=" + server + "&id=" + t.getId();
+                    tribeBlock = tribeBlock.replaceAll(TRIBE_DSREAL_LINK, "<a href=\"" + dsRealLink + "\" target=\"_blank\">DS Real</a>");
+                    String twPlusLink = "http://" + server + ".twplus.org/file/player/" + t.getId() + "/";
+                    tribeBlock = tribeBlock.replaceAll(TRIBE_TWPLUS_LINK, "<a href=\"" + twPlusLink + "\" target=\"_blank\">TWPlus</a>");
                 } else {
                     //no additional information for barbarians
                     tribeBlock = tribeBlock.replaceAll(TRIBE_GUEST_LINK, "");
@@ -290,9 +272,9 @@ public class SelectionHTMLExporter {
         String foot = FOOTER;
         foot = foot.replaceAll(VERSION, Double.toString(Constants.VERSION) + Constants.VERSION_ADDITION);
 
-        f = new SimpleDateFormat("dd.MM.yyyy 'um' HH:mm:ss 'Uhr'");
+        SimpleDateFormat f = new SimpleDateFormat("dd.MM.yyyy 'um' HH:mm:ss 'Uhr'");
 
-        foot = foot.replaceAll(CREATION_DATE, f.format(new Date(System.currentTimeMillis())));
+        foot = foot.replaceAll(CREATION_DATE, f.format(new Date()));
         result.append(foot);
         // </editor-fold>
 

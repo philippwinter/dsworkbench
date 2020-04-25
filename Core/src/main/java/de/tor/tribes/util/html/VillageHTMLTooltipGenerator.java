@@ -22,12 +22,13 @@ import de.tor.tribes.types.ext.Ally;
 import de.tor.tribes.types.ext.Barbarians;
 import de.tor.tribes.types.ext.Tribe;
 import de.tor.tribes.types.ext.Village;
-import de.tor.tribes.ui.windows.DSWorkbenchMainFrame;
 import de.tor.tribes.ui.ImageManager;
 import de.tor.tribes.ui.panels.MapPanel;
+import de.tor.tribes.ui.windows.DSWorkbenchMainFrame;
 import de.tor.tribes.util.BBCodeFormatter;
 import de.tor.tribes.util.DSCalculator;
 import de.tor.tribes.util.GlobalOptions;
+import de.tor.tribes.util.ServerSettings;
 import de.tor.tribes.util.conquer.ConquerManager;
 import de.tor.tribes.util.farm.FarmManager;
 import de.tor.tribes.util.mark.MarkerManager;
@@ -52,10 +53,11 @@ public class VillageHTMLTooltipGenerator {
     }
     
     public static String buildToolTip(Village pVillage, boolean pWithUnits) {
-        boolean showMoral = Boolean.parseBoolean(GlobalOptions.getProperty("show.popup.moral"));
-        boolean showRanks = Boolean.parseBoolean(GlobalOptions.getProperty("show.popup.ranks"));
-        boolean showConquers = Boolean.parseBoolean(GlobalOptions.getProperty("show.popup.conquers"));
-        boolean showFarmSpace = Boolean.parseBoolean(GlobalOptions.getProperty("show.popup.farm.space"));
+        boolean showMoral = GlobalOptions.getProperties().getBoolean("show.popup.moral") &&
+                ServerSettings.getSingleton().getMoralType() != ServerSettings.NO_MORAL;
+        boolean showRanks = GlobalOptions.getProperties().getBoolean("show.popup.ranks");
+        boolean showConquers = GlobalOptions.getProperties().getBoolean("show.popup.conquers");
+        boolean showFarmSpace = GlobalOptions.getProperties().getBoolean("show.popup.farm.space");
         StringBuilder b = new StringBuilder();
         b.append("<html><head>").append(BBCodeFormatter.getStyles()).append("</head><table width=\"400\" style=\"border: solid 1px black; cellspacing:0px;cellpadding: 0px;background-color:#EFEBDF;color:black;\">\n");
         b.append(buildVillageRow(pVillage));
@@ -78,9 +80,8 @@ public class VillageHTMLTooltipGenerator {
                 Tribe current = GlobalOptions.getSelectedProfile().getTribe();
                 if (current != null) {
                     if (current.getId() != pVillage.getTribe().getId()) {
-                        double moral = ((pVillage.getTribe().getPoints() / current.getPoints()) * 3 + 0.3) * 100;
-                        moral = (moral > 100) ? 100 : moral;
-                        b.append(buildInfoRow("Moral:", nf.format(moral) + "%", false));
+                        b.append(buildInfoRow("Moral:", DSCalculator
+                                .calculateMorale(current, pVillage.getTribe()) , false));
                     }
                 }
             }
@@ -234,7 +235,7 @@ public class VillageHTMLTooltipGenerator {
         VillageTroopsHolder own = TroopsManager.getSingleton().getTroopsForVillage(pVillage, TroopsManager.TROOP_TYPE.OWN);   
                 
         if (own != null) {
-            float farmSpace = own.getFarmSpace() * 100.f;
+            float farmSpace = DSCalculator.getFarmSpaceRatio(pVillage) * 100.f;
             URL red = VillageHTMLTooltipGenerator.class.getResource("/res/balken_pech.png");
             URL green = VillageHTMLTooltipGenerator.class.getResource("/res/balken_glueck.png");
             if (farmSpace == 100) {
@@ -282,21 +283,21 @@ public class VillageHTMLTooltipGenerator {
             b.append("<img src=\"").append(VillageHTMLTooltipGenerator.class.getResource("/res/ui/" + unit.getPlainName() + ".png")).append("\"/>");
             b.append("<BR/>\n");
             if (inVillage != null) {
-                Integer amount = inVillage.getTroopsOfUnitInVillage(unit);
+                Integer amount = inVillage.getTroops().getAmountForUnit(unit);
                 if (amount == 0) {
                     b.append("<font style=\"color:#DED3B9;\">0</font>\n");
                 } else {
                     b.append("<font>").append(amount).append("</font>\n");
                 }
                 b.append("<BR/>\n");
-                amount = (outside == null) ? 0 : outside.getTroopsOfUnitInVillage(unit);
+                amount = (outside == null) ? 0 : outside.getTroops().getAmountForUnit(unit);
                 if (amount == 0) {
                     b.append("<font style=\"color:#DED3B9;\">0</font>\n");
                 } else {
                     b.append("<font>").append(amount).append("</font>\n");
                 }
                 b.append("<BR/>\n");
-                amount = (onTheWay == null) ? 0 : onTheWay.getTroopsOfUnitInVillage(unit);
+                amount = (onTheWay == null) ? 0 : onTheWay.getTroops().getAmountForUnit(unit);
                 if (amount == 0) {
                     b.append("<font style=\"color:#DED3B9;\">0</font>\n");
                 } else {

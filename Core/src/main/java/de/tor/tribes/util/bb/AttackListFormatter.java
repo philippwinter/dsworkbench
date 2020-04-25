@@ -16,7 +16,6 @@
 package de.tor.tribes.util.bb;
 
 import de.tor.tribes.types.Attack;
-
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -27,7 +26,7 @@ import java.util.List;
 public class AttackListFormatter extends BasicFormatter<Attack> {
 
     private static final String[] VARIABLES = new String[] {LIST_START, LIST_END, ELEMENT_COUNT, ELEMENT_ID};
-    private static final String STANDARD_TEMPLATE = "[b]Angriffsplan[/b]\nAnzahl der Angriffe: %ELEMENT_COUNT%\n[table]\n"
+    public static final String STANDARD_TEMPLATE = "[b]Angriffsplan[/b]\nAnzahl der Angriffe: %ELEMENT_COUNT%\n[table]\n"
             + "[**]ID[||]Art[||]Einheit[||]Herkunft[||]Ziel[||]Abschickzeit[||]Versammlungsplatz[/**]\n"
             + "%LIST_START%[*]%ELEMENT_ID%[|]%TYPE%[|]%UNIT%[|]%SOURCE%[|]%TARGET%[|]%SEND%[|]%PLACE%[/*]%LIST_END%\n"
             + "[/table]";

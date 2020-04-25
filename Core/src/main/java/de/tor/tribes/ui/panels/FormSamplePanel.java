@@ -15,10 +15,10 @@
  */
 package de.tor.tribes.ui.panels;
 
+import de.tor.tribes.types.drawing.Arrow;
 import de.tor.tribes.types.drawing.Circle;
 import de.tor.tribes.types.drawing.FreeForm;
 import de.tor.tribes.types.drawing.Line;
-import de.tor.tribes.types.drawing.Arrow;
 import de.tor.tribes.types.drawing.Rectangle;
 import de.tor.tribes.types.drawing.Text;
 import de.tor.tribes.util.Constants;
@@ -152,7 +152,9 @@ public class FormSamplePanel extends javax.swing.JPanel {
         }
     }
 
-    public void paint(Graphics g) {
+    @Override
+    public void paintComponent(Graphics g) {
+        super.paintComponent(g);
         Graphics2D g2d = (Graphics2D) g;
         g2d.setColor(Color.WHITE);
         g2d.fillRect(0, 0, getWidth(), getHeight());

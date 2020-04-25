@@ -16,37 +16,35 @@
 package de.tor.tribes.util.algo;
 
 import de.tor.tribes.io.UnitHolder;
-import de.tor.tribes.types.AbstractTroopMovement;
+import de.tor.tribes.types.TroopMovement;
 import de.tor.tribes.types.ext.Village;
-import de.tor.tribes.ui.algo.AlgorithmLogPanel;
 import de.tor.tribes.util.ServerSettings;
 import de.tor.tribes.util.algo.types.DistanceMapping;
 import de.tor.tribes.util.algo.types.TimeFrame;
-import org.apache.log4j.Logger;
-
 import java.util.Collections;
-import java.util.Hashtable;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
- * @TODO (DIFF) Check max. snob runtime
- *
  * @author Torridity
  */
 public abstract class AbstractAttackAlgorithm extends Thread {
     
-    private static Logger logger = Logger.getLogger("AttackAlgorithm");
-    private List<AbstractTroopMovement> results = null;
-    private Hashtable<UnitHolder, List<Village>> sources = null;
-    private Hashtable<UnitHolder, List<Village>> fakes = null;
+    private static Logger logger = LogManager.getLogger("AttackAlgorithm");
+    private List<TroopMovement> results = null;
+    private HashMap<UnitHolder, List<Village>> sources = null;
+    private HashMap<UnitHolder, List<Village>> fakes = null;
     private List<Village> targets = null;
     private List<Village> fakeTargets = null;
-    private Hashtable<Village, Integer> maxAttacksTable;
+    private HashMap<Village, Integer> maxAttacksTable;
     private TimeFrame timeFrame = null;
-    boolean fakeOffTargets = false;
+    private boolean fakeOffTargets = false;
+    private boolean multiSnobAllowed = false;
     private AlgorithmListener mListener = null;
-    private AlgorithmLogPanel mLogPanel = null;
     private boolean running = false;
     private boolean aborted = false;
     private LogListener listener = null;
@@ -58,14 +56,14 @@ public abstract class AbstractAttackAlgorithm extends Thread {
     }
     
     public void initialize(
-            Hashtable<UnitHolder, List<Village>> pSources,
-            Hashtable<UnitHolder, List<Village>> pFakes,
+            HashMap<UnitHolder, List<Village>> pSources,
+            HashMap<UnitHolder, List<Village>> pFakes,
             List<Village> pTargets,
             List<Village> pFakedTargets,
-            Hashtable<Village, Integer> pMaxAttacksTable,
+            HashMap<Village, Integer> pMaxAttacksTable,
             TimeFrame pTimeFrame,
             boolean pFakeOffTargets,
-            AlgorithmLogPanel pLogPanel) {
+            boolean pMultiSnobAllowed) {
         sources = pSources;
         fakes = pFakes;
         targets = pTargets;
@@ -73,7 +71,7 @@ public abstract class AbstractAttackAlgorithm extends Thread {
         maxAttacksTable = pMaxAttacksTable;
         timeFrame = pTimeFrame;
         fakeOffTargets = pFakeOffTargets;
-        mLogPanel = pLogPanel;
+        multiSnobAllowed = pMultiSnobAllowed;
     }
     
     public void setLogListener(LogListener pListener) {
@@ -84,48 +82,38 @@ public abstract class AbstractAttackAlgorithm extends Thread {
         return listener;
     }
     
-    public abstract List<AbstractTroopMovement> calculateAttacks(
-            Hashtable<UnitHolder, List<Village>> pSources,
-            Hashtable<UnitHolder, List<Village>> pFakes,
+    public abstract List<TroopMovement> calculateAttacks(
+            HashMap<UnitHolder, List<Village>> pSources,
+            HashMap<UnitHolder, List<Village>> pFakes,
             List<Village> pTargets,
             List<Village> pFakeTargets,
-            Hashtable<Village, Integer> pMaxAttacksTable,
+            HashMap<Village, Integer> pMaxAttacksTable,
             TimeFrame pTimeFrame,
             boolean pFakeOffTargets);
     
+    protected boolean multipleSameSnobsAllowed() {
+        return multiSnobAllowed;
+    }
+    
     public void logText(String pText) {
-        if (mLogPanel != null) {
-            mLogPanel.addText(pText);
-        }
         if (listener != null) {
             listener.logMessage(pText);
         }
     }
     
     public void logInfo(String pText) {
-        if (mLogPanel != null) {
-            mLogPanel.addInfo(pText);
-        }
         if (listener != null) {
             listener.logMessage(pText);
         }
     }
     
     public void logError(String pText) {
-        if (mLogPanel != null) {
-            mLogPanel.addError(pText);
-        }
-        
         if (listener != null) {
             listener.logMessage(pText);
         }
     }
     
     public void updateStatus(int pCurrentStatus, int pMaxStatus) {
-        if (mLogPanel != null) {
-            mLogPanel.updateStatus(pCurrentStatus, pMaxStatus);
-        }
-        
         if (listener != null) {
             listener.updateProgress(100.0 * (double) pCurrentStatus / (double) pMaxStatus);
         }
@@ -144,7 +132,7 @@ public abstract class AbstractAttackAlgorithm extends Thread {
         return timeFrame;
     }
     
-    public List<AbstractTroopMovement> getResults() {
+    public List<TroopMovement> getResults() {
         return results;
     }
     
@@ -158,7 +146,7 @@ public abstract class AbstractAttackAlgorithm extends Thread {
      */
     public int getFullOffs() {
         int cnt = 0;
-        for (AbstractTroopMovement movement : results) {
+        for (TroopMovement movement : results) {
             cnt += (movement.offComplete()) ? 1 : 0;
         }
         return cnt;

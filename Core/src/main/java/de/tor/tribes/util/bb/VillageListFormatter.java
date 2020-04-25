@@ -16,7 +16,6 @@
 package de.tor.tribes.util.bb;
 
 import de.tor.tribes.types.ext.Village;
-
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -27,7 +26,7 @@ import java.util.List;
 public class VillageListFormatter extends BasicFormatter<Village> {
 
     private static final String[] VARIABLES = new String[] {LIST_START, LIST_END, ELEMENT_COUNT, ELEMENT_ID};
-    private static final String STANDARD_TEMPLATE = "[table]\n[**]ID[||]Dorf[||]Besitzer[||]Punkte[/**]\n"
+    public static final String STANDARD_TEMPLATE = "[table]\n[**]ID[||]Dorf[||]Besitzer[||]Punkte[/**]\n"
             + "%LIST_START%[*]%ELEMENT_ID%[|][coord]%X%|%Y%[/coord][|]%TRIBE%[|]%POINTS%[/*]%LIST_END%\n"
             + "[/table]";
     private static final String TEMPLATE_PROPERTY = "village.list.bbexport.template";

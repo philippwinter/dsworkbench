@@ -35,15 +35,13 @@ public class AttackToBBCodeFormater {
         String sendtime = null;
         String arrivetime = null;
         String template = GlobalOptions.getProperty("attack.bbexport.template");
-        if (template == null) {
-            template = STANDARD_TEMPLATE;
-        }
+        
         //bot protection
         template = template.replaceAll("red", getRandomRed());
         template = template.replaceAll("green", getRandomGreen());
 
         Date aTime = pAttack.getArriveTime();
-        Date sTime = new Date(aTime.getTime() - (long) (DSCalculator.calculateMoveTimeInSeconds(pAttack.getSource(), pAttack.getTarget(), pAttack.getUnit().getSpeed()) * 1000));
+        Date sTime = pAttack.getSendTime();
         if (pExtended) {
             if (ServerSettings.getSingleton().isMillisArrival()) {
                 sendtime = new SimpleDateFormat("dd.MM.yy 'um' HH:mm:ss.'[size=8]'SSS'[/size]'").format(sTime);
@@ -104,15 +102,14 @@ public class AttackToBBCodeFormater {
         template = template.replaceAll("%SEND%", sendtime);
         template = template.replaceAll("%ARRIVE%", arrivetime);
         //replace place var
-        String baseURL = ServerManager.getServerURL(GlobalOptions.getSelectedServer()) + "/";
-        String placeURL = baseURL + "game.php?village=";
+        String placeURL = pServerURL + "game.php?village=";
         int uvID = -1;
         if (GlobalOptions.getSelectedProfile() != null) {
             uvID = GlobalOptions.getSelectedProfile().getUVId();
         }
 
         if (uvID >= 0) {
-            placeURL = baseURL + "game.php?t=" + uvID + "&village=";
+            placeURL = pServerURL + "game.php?t=" + uvID + "&village=";
         }
         placeURL += pAttack.getSource().getId() + "&screen=place&mode=command&target=" + pAttack.getTarget().getId();
 
@@ -127,9 +124,6 @@ public class AttackToBBCodeFormater {
         String sendtime = null;
         String arrivetime = null;
         String template = GlobalOptions.getProperty("attack.bbexport.template");
-        if (template == null) {
-            template = "%TYPE% von %ATTACKER% aus %SOURCE% mit %UNIT% auf %DEFENDER% in %TARGET% startet am [color=red]%SEND%[/color] und kommt am [color=green]%ARRIVE%[/color] an";
-        }
 
         Date aTime = new Date(pSendTime.getTime() + (long) (DSCalculator.calculateMoveTimeInSeconds(pSource, pTarget, pUnit.getSpeed()) * 1000));
 

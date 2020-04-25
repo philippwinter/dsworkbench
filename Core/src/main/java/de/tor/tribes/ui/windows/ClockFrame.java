@@ -22,7 +22,7 @@ import de.tor.tribes.util.Constants;
 import de.tor.tribes.util.GlobalOptions;
 import de.tor.tribes.util.JOptionPaneHelper;
 import de.tor.tribes.util.SystrayHelper;
-import de.tor.tribes.util.xml.JaxenUtils;
+import de.tor.tribes.util.xml.JDomUtils;
 import java.applet.Applet;
 import java.applet.AudioClip;
 import java.awt.BorderLayout;
@@ -31,8 +31,6 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.BufferedInputStream;
 import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -43,17 +41,18 @@ import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Clip;
 import javax.swing.*;
 import javax.swing.JSpinner.DateEditor;
-import org.apache.commons.lang.time.DateUtils;
-import org.apache.log4j.Logger;
-import org.jdom.Document;
-import org.jdom.Element;
+import org.apache.commons.lang3.time.DateUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jdom2.Document;
+import org.jdom2.Element;
 
 /**
  * @author Torridity
  */
 public class ClockFrame extends javax.swing.JFrame implements ActionListener {
 
-    private static Logger logger = Logger.getLogger("ClockFrame");
+    private static Logger logger = LogManager.getLogger("ClockFrame");
 
     @Override
     public void actionPerformed(ActionEvent e) {
@@ -83,13 +82,8 @@ public class ClockFrame extends javax.swing.JFrame implements ActionListener {
         tThread = new TimerThread(this);
         tThread.start();
 
-        String val = GlobalOptions.getProperty("clock.alwaysOnTop");
-        if (val == null) {
-            jCheckBox1.setSelected(false);
-        } else {
-            jCheckBox1.setSelected(Boolean.parseBoolean(val));
+        jCheckBox1.setSelected(GlobalOptions.getProperties().getBoolean("clock.alwaysOnTop"));
 
-        }
         setAlwaysOnTop(jCheckBox1.isSelected());
         cp = new ColoredProgressBar(0, 1000);
         jPanel1.add(cp, BorderLayout.CENTER);
@@ -123,7 +117,7 @@ public class ClockFrame extends javax.swing.JFrame implements ActionListener {
             if (diff > 0) {
                 ratio = (float) ((millis - markerMin) / (markerMax - markerMin));
             }
-
+            
             Color c1 = Color.GREEN;
             if (millis >= 500) {
                 c1 = Color.YELLOW;
@@ -149,10 +143,16 @@ public class ClockFrame extends javax.swing.JFrame implements ActionListener {
             cp.setValue(millis);
         }
 
-        for (TimerPanel p : timers.toArray(new TimerPanel[timers.size()])) {
+        for (final TimerPanel p : timers.toArray(new TimerPanel[timers.size()])) {
             if (p.isExpired()) {
-                playSound(p.getSound());
                 SystrayHelper.showInfoMessage("Timer  '" + p.getName() + "' ist abgelaufen");
+                //moved playing the sound to a new Thread because of graphic problems
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        playSound(p.getSound());
+                    }
+                }).start();
                 removeTimer(p);
             } else {
                 p.update();
@@ -188,18 +188,13 @@ public class ClockFrame extends javax.swing.JFrame implements ActionListener {
     }
 
     private void storeTimers() {
-        try {
-            FileWriter w = new FileWriter("timers.xml");
-            w.write("<timers\n>");
-            for (TimerPanel p : timers) {
-                w.write(p.toXml());
-            }
-            w.write("</timers>");
-            w.flush();
-            w.close();
-        } catch (IOException ioe) {
-            logger.error("Failed to store timers", ioe);
+        Document timerDoc = JDomUtils.createDocument();
+        Element timersElm = new Element("timers");
+        for (TimerPanel p : timers) {
+            timersElm.addContent(p.toXml("timer"));
         }
+        timerDoc.getRootElement().addContent(timersElm);
+        JDomUtils.saveDocument(timerDoc, "timers.xml");
     }
 
     private void restoreTimers() {
@@ -208,8 +203,8 @@ public class ClockFrame extends javax.swing.JFrame implements ActionListener {
             if (timerFile.exists()) {
                 String message = "Die folgenden Timer sind zwischenzeitlich abgelaufen:\n";
                 long l = message.length();
-                Document d = JaxenUtils.getDocument(timerFile);
-                for (Element e : (List<Element>) JaxenUtils.getNodes(d, "//timers/timer")) {
+                Document d = JDomUtils.getDocument(timerFile);
+                for (Element e : (List<Element>) JDomUtils.getNodes(d, "timers/timer")) {
                     TimerPanel p = new TimerPanel(this);
                     if (p.fromXml(e)) {
                         if (!p.isExpired()) {
@@ -236,7 +231,7 @@ public class ClockFrame extends javax.swing.JFrame implements ActionListener {
         Clip clip = null;
         AudioClip ac = null;
         try {
-            if (org.apache.commons.lang.SystemUtils.IS_OS_WINDOWS) {
+            if (org.apache.commons.lang3.SystemUtils.IS_OS_WINDOWS) {
                 clip = AudioSystem.getClip();
                 BufferedInputStream bin = new BufferedInputStream(ClockFrame.class.getResourceAsStream("/res/" + pSound + ".wav"));
                 AudioInputStream inputStream = AudioSystem.getAudioInputStream(bin);
@@ -509,7 +504,14 @@ private void fireAlwaysOnTopChangedEvent(javax.swing.event.ChangeEvent evt) {//G
 }//GEN-LAST:event_fireAlwaysOnTopChangedEvent
 
 private void fireTestSoundEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireTestSoundEvent
-    playSound((String) jComboBox1.getSelectedItem());
+    final String sound = (String) jComboBox1.getSelectedItem();
+    //moved playing the sound to a new Thread because of graphic problems
+    new Thread(new Runnable() {
+        @Override
+        public void run() {
+            playSound(sound);
+        }
+    }).start();
 }//GEN-LAST:event_fireTestSoundEvent
 
     private void fireCreateTimer(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireCreateTimer
@@ -542,6 +544,7 @@ private void fireTestSoundEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:even
     public static void main(String args[]) {
 
         java.awt.EventQueue.invokeLater(new Runnable() {
+            @Override
             public void run() {
                 ClockFrame cf = new ClockFrame();
                 cf.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);

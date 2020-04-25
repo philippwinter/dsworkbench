@@ -15,8 +15,8 @@
  */
 package de.tor.tribes.types;
 
-import de.tor.tribes.types.ext.Village;
 import de.tor.tribes.io.UnitHolder;
+import de.tor.tribes.types.ext.Village;
 import de.tor.tribes.util.troops.TroopsManager;
 import de.tor.tribes.util.troops.VillageTroopsHolder;
 
@@ -70,7 +70,7 @@ public class TroopFilterElement {
         if (holder == null) {
             return false;
         }
-        int amount = holder.getTroopsOfUnitInVillage(unit);
+        int amount = holder.getTroops().getAmountForUnit(unit);
         return (amount >= minAmount && amount <= maxAmount);
     }
     

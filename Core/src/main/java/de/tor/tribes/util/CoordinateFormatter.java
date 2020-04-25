@@ -18,6 +18,7 @@ package de.tor.tribes.util;
 import de.tor.tribes.io.DataHolder;
 import de.tor.tribes.types.ext.Village;
 import java.awt.Point;
+import java.awt.Rectangle;
 import java.text.ParseException;
 import java.util.List;
 import javax.swing.JFormattedTextField;
@@ -73,7 +74,9 @@ public class CoordinateFormatter extends DefaultFormatter {
         if (value instanceof Point) {
             Point point = (Point) value;
             Village v = null;
-            if (point.x > 0 && point.y > 0 && point.x < ServerSettings.getSingleton().getMapDimension().width && point.y < ServerSettings.getSingleton().getMapDimension().height) {
+            Rectangle dim = ServerSettings.getSingleton().getMapDimension();
+            if (point.x >= dim.getMinX() && point.x <= dim.getMaxX()
+                    && point.y >= dim.getMinY() && point.y <= dim.getMaxY()) {
                 v = DataHolder.getSingleton().getVillages()[point.x][point.y];
             }
             if (v == null) {
@@ -85,34 +88,17 @@ public class CoordinateFormatter extends DefaultFormatter {
             return super.valueToString(value);
         }
     }
-
-//    public static void main(String[] args) {
-//        Point point = new Point(5, -5);
-//        JFormattedTextField.AbstractFormatter formatter = CoordinateFormatter.getInstance();
-//        String value;
-//        try {
-//            value = formatter.valueToString(point);
-//        } catch (ParseException e) {
-//            value = null;
-//        }
-//        System.out.println(value);
-//        value = "(3|-3)";
-//        try {
-//            point = (Point) formatter.stringToValue(value);
-//        } catch (ParseException e) {
-//            point = null;
-//        }
-//        System.out.println(point);
-//    }
 }
 
 class DoNothingFilter extends DocumentFilter {
 
+    @Override
     public void insertString(DocumentFilter.FilterBypass fb, int offset, String text,
             AttributeSet attr) throws BadLocationException {
         fb.insertString(offset, text, attr);
     }
 
+    @Override
     public void replace(DocumentFilter.FilterBypass fb, int offset, int length, String text,
             AttributeSet attrs) throws BadLocationException {
         fb.replace(offset, length, text, attrs);

@@ -16,6 +16,7 @@
 package de.tor.tribes.util.generator.ui;
 
 import de.tor.tribes.io.DataHolder;
+import de.tor.tribes.io.TroopAmountFixed;
 import de.tor.tribes.io.UnitHolder;
 import de.tor.tribes.types.Attack;
 import de.tor.tribes.types.SOSRequest;
@@ -30,11 +31,7 @@ import java.awt.datatransfer.StringSelection;
 import java.awt.event.ItemEvent;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Enumeration;
-import java.util.Hashtable;
 import javax.swing.DefaultComboBoxModel;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.Logger;
 
 /**
  *
@@ -258,14 +255,8 @@ public class SOSGenerator extends javax.swing.JFrame {
 
             if (t != null && a.getTarget().getTribe().getId() == t.getId()) {
                 TargetInformation info = sos.addTarget(a.getTarget());
-                if (info.getTroops().isEmpty()) {
-                    Hashtable<UnitHolder, Integer> troops = getDefendingTroops();
-
-                    Enumeration<UnitHolder> keys = troops.keys();
-                    while (keys.hasMoreElements()) {
-                        UnitHolder key = keys.nextElement();
-                        info.addTroopInformation(key, troops.get(key));
-                    }
+                if (!info.getTroops().hasUnits()) {
+                    info.setTroops(getDefendingTroops());
                     info.setWallLevel(20);
                 }
                 if (jIncludeTypes.isSelected()) {
@@ -288,7 +279,6 @@ public class SOSGenerator extends javax.swing.JFrame {
           bäääng! [coord]318|272[/coord] --> Ankunftszeit: 11.10.11 14:42:49 [player]MrBlue76[/player] bäääng! [coord]211|345[/coord] -->
           Ankunftszeit: 11.10.11 16:45:37 [player]MrBlue76[/player]
          */
-        Enumeration<Village> targets = sos.getTargets();
         StringBuilder b = new StringBuilder();
         SimpleDateFormat df;
         if (de.tor.tribes.util.ServerSettings.getSingleton().isMillisArrival()) {
@@ -296,14 +286,13 @@ public class SOSGenerator extends javax.swing.JFrame {
         } else {
             df = new SimpleDateFormat("dd.MM.yy HH:mm:ss");
         }
-        while (targets.hasMoreElements()) {
-            Village target = targets.nextElement();
+        for(Village target: sos.getTargets()) {
             b.append("[b]Dorf:[/b] ").append(target.toBBCode()).append("\n");
             TargetInformation ti = sos.getTargetInformation(target);
             b.append("[b]Wallstufe:[/b] ").append(ti.getWallLevel()).append("\n");
             b.append("[b]Verteidiger:[/b] ");
             for (UnitHolder unit : DataHolder.getSingleton().getUnits()) {
-                b.append(ti.getTroops().get(unit)).append(" ");
+                b.append(ti.getTroops().getAmountForUnit(unit)).append(" ");
             }
             b.append("\n\n");
             for (TimedAttack a : ti.getAttacks()) {
@@ -346,30 +335,22 @@ public class SOSGenerator extends javax.swing.JFrame {
 
     }
 
-    private Hashtable<UnitHolder, Integer> getDefendingTroops() {
-        Hashtable<String, Integer> units = new Hashtable<>();
+    private TroopAmountFixed getDefendingTroops() {
+        TroopAmountFixed units = new TroopAmountFixed(0);
         if (jMedDef.isSelected()) {
-            units.put("spear", getRandomValueInRange(1000, 2000));
-            units.put("sword", getRandomValueInRange(1000, 2000));
-            units.put("heavy", getRandomValueInRange(300, 500));
-            units.put("spy", getRandomValueInRange(100, 200));
+            units.setAmountForUnit("spear", getRandomValueInRange(1000, 2000));
+            units.setAmountForUnit("sword", getRandomValueInRange(1000, 2000));
+            units.setAmountForUnit("heavy", getRandomValueInRange(300, 500));
+            units.setAmountForUnit("spy", getRandomValueInRange(100, 200));
         } else if (jFullDef.isSelected()) {
-            units.put("spear", getRandomValueInRange(5000, 6000));
-            units.put("sword", getRandomValueInRange(5000, 6000));
-            units.put("heavy", getRandomValueInRange(2000, 3000));
-            units.put("spy", getRandomValueInRange(500, 800));
+            units.setAmountForUnit("spear", getRandomValueInRange(5000, 6000));
+            units.setAmountForUnit("sword", getRandomValueInRange(5000, 6000));
+            units.setAmountForUnit("heavy", getRandomValueInRange(2000, 3000));
+            units.setAmountForUnit("spy", getRandomValueInRange(500, 800));
         } else if (jNoDef.isSelected()) {
             //add nothing
         }
-
-        Hashtable<UnitHolder, Integer> result = TroopHelper.unitTableFromSerializableFormat(units);
-        for (UnitHolder u : DataHolder.getSingleton().getUnits()) {
-            if (!result.containsKey(u)) {
-                result.put(u, 0);
-            }
-        }
-
-        return result;
+        return units;
     }
 
     private void sendToClipboard(String pText) {
@@ -379,46 +360,7 @@ public class SOSGenerator extends javax.swing.JFrame {
     private int getRandomValueInRange(int min, int max) {
         return Math.max(min, (int) (Math.random() * max));
     }
-
-    /**
-     * @param args the command line arguments
-     */
-    public static void main(String args[]) {
-        /*
-         * Set the Nimbus look and feel
-         */
-        //<editor-fold defaultstate="collapsed" desc=" Look and feel setting code (optional) ">
-        /*
-         * If Nimbus (introduced in Java SE 6) is not available, stay with the default look and feel. For details see
-         * http://download.oracle.com/javase/tutorial/uiswing/lookandfeel/plaf.html
-         */
-        try {
-            for (javax.swing.UIManager.LookAndFeelInfo info : javax.swing.UIManager.getInstalledLookAndFeels()) {
-                if ("Nimbus".equals(info.getName())) {
-                    javax.swing.UIManager.setLookAndFeel(info.getClassName());
-                    break;
-                }
-            }
-        } catch (ClassNotFoundException | javax.swing.UnsupportedLookAndFeelException | IllegalAccessException | InstantiationException ex) {
-            java.util.logging.Logger.getLogger(SOSGenerator.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
-        }
-        //</editor-fold>
-        Logger.getRootLogger().addAppender(new ConsoleAppender(new org.apache.log4j.PatternLayout("%d - %-5p - %-20c (%C [%L]) - %m%n")));
-        GlobalOptions.setSelectedServer("de43");
-        ProfileManager.getSingleton().loadProfiles();
-        GlobalOptions.setSelectedProfile(ProfileManager.getSingleton().getProfiles("de43")[0]);
-        DataHolder.getSingleton().loadData(false);
-        GlobalOptions.loadUserData();
-        /*
-         * Create and display the form
-         */
-        java.awt.EventQueue.invokeLater(new Runnable() {
-
-            public void run() {
-                new SOSGenerator().setVisible(true);
-            }
-        });
-    }
+    
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.ButtonGroup buttonGroup1;
     private org.jdesktop.swingx.JXTextField jAmount;

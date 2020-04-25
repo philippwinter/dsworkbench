@@ -16,11 +16,11 @@
 package de.tor.tribes.ui.windows;
 
 import de.tor.tribes.io.DataHolder;
+import de.tor.tribes.io.TroopAmountFixed;
 import de.tor.tribes.io.UnitHolder;
 import de.tor.tribes.ui.renderer.TroopAmountListCellRenderer;
 import de.tor.tribes.util.troops.VillageTroopsHolder;
 import java.text.NumberFormat;
-import java.util.HashMap;
 import java.util.List;
 import javax.swing.DefaultListModel;
 
@@ -41,21 +41,16 @@ public class TroopDetailsDialog extends javax.swing.JDialog {
     }
 
     public void setupAndShow(List<VillageTroopsHolder> pInfo) {
-        HashMap<UnitHolder, Integer> amounts = new HashMap<>(); //initialize map
-        for (UnitHolder u : DataHolder.getSingleton().getUnits()) {
-            amounts.put(u, 0);
-        } //fill map 
+        TroopAmountFixed amounts = new TroopAmountFixed(0); //initialize map
         for (VillageTroopsHolder holder : pInfo) {
-            for (UnitHolder u : DataHolder.getSingleton().getUnits()) {
-                amounts.put(u, amounts.get(u) + holder.getTroopsOfUnitInVillage(u));
-            }
+            amounts.addAmount(holder.getTroops());
         } //fill list 
         DefaultListModel model = new DefaultListModel();
         NumberFormat nf = NumberFormat.getInstance();
         nf.setMinimumFractionDigits(0);
         nf.setMaximumFractionDigits(0);
         for (UnitHolder u : DataHolder.getSingleton().getUnits()) {
-            model.addElement(nf.format(amounts.get(u)) + " " + u.getPlainName());
+            model.addElement(nf.format(amounts.getAmountForUnit(u)) + " " + u.getPlainName());
         }
 
         jTroopAmountList.setModel(model);
@@ -113,49 +108,7 @@ public class TroopDetailsDialog extends javax.swing.JDialog {
     private void fireCloseEvent(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_fireCloseEvent
         dispose();
     }//GEN-LAST:event_fireCloseEvent
-
-    /**
-     * @param args the command line arguments
-     */
-    public static void main(String args[]) {
-        /*
-         * Set the Nimbus look and feel
-         */
-        //<editor-fold defaultstate="collapsed" desc=" Look and feel setting code (optional) ">
-        /*
-         * If Nimbus (introduced in Java SE 6) is not available, stay with the default look and feel. For details see
-         * http://download.oracle.com/javase/tutorial/uiswing/lookandfeel/plaf.html
-         */
-        try {
-            for (javax.swing.UIManager.LookAndFeelInfo info : javax.swing.UIManager.getInstalledLookAndFeels()) {
-                if ("Nimbus".equals(info.getName())) {
-                    javax.swing.UIManager.setLookAndFeel(info.getClassName());
-                    break;
-                }
-            }
-        } catch (ClassNotFoundException | javax.swing.UnsupportedLookAndFeelException | IllegalAccessException | InstantiationException ex) {
-            java.util.logging.Logger.getLogger(TroopDetailsDialog.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
-        }
-        //</editor-fold>
-
-        /*
-         * Create and display the dialog
-         */
-        java.awt.EventQueue.invokeLater(new Runnable() {
-
-            public void run() {
-                TroopDetailsDialog dialog = new TroopDetailsDialog(new javax.swing.JFrame(), true);
-                dialog.addWindowListener(new java.awt.event.WindowAdapter() {
-
-                    @Override
-                    public void windowClosing(java.awt.event.WindowEvent e) {
-                        System.exit(0);
-                    }
-                });
-                dialog.setVisible(true);
-            }
-        });
-    }
+    
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton jButton1;
     private javax.swing.JScrollPane jScrollPane2;

@@ -22,7 +22,9 @@ import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import javax.imageio.ImageIO;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  *
@@ -30,17 +32,33 @@ import org.apache.log4j.Logger;
  */
 public class MinimapZoomFrame extends javax.swing.JFrame {
 
-    private static Logger logger = Logger.getLogger("Minimap-Zoomframe");
+    private static Logger logger = LogManager.getLogger("Minimap-Zoomframe");
+    //Image of the whole minimap
     protected BufferedImage mMap = null;
     private DrawThread mDrawThread;
     private BufferedImage mBorder = null;
 
+    private static MinimapZoomFrame SINGLETON = null;
+    public static synchronized MinimapZoomFrame getSingleton() {
+        if (SINGLETON == null) {
+            try {
+                SINGLETON = new MinimapZoomFrame();
+            } catch (Exception e) {
+                SINGLETON = null;
+            }
+        }
+
+        return SINGLETON;
+    }
+    
     /**
      * Creates new form MinimapZoomFrame
      */
-    public MinimapZoomFrame(BufferedImage pMap) {
+    public MinimapZoomFrame() {
         initComponents();
-        mMap = pMap;
+        
+        this.setSize(300, 300);
+        this.setLocation(0, 0);
         mDrawThread = new DrawThread(this);
         mDrawThread.start();
         try {
@@ -68,6 +86,8 @@ public class MinimapZoomFrame extends javax.swing.JFrame {
         }
 
     }
+    
+    //Actual Image Shown
     private int xp = 0;
     private int yp = 0;
     private Image pImage = null;
@@ -119,7 +139,7 @@ public class MinimapZoomFrame extends javax.swing.JFrame {
 
 class DrawThread extends Thread {
 
-    private static Logger logger = Logger.getLogger("Minimap-Zoomframe(PaintThread)");
+    private static Logger logger = LogManager.getLogger("Minimap-Zoomframe(PaintThread)");
     private MinimapZoomFrame mParent;
     private int centerX = 0;
     private int centerY = 0;
@@ -134,7 +154,7 @@ class DrawThread extends Thread {
     public void run() {
         while (true) {
             try {
-                if (mParent.isVisible()) {
+                if (mParent.isVisible() && mParent.mMap != null) {
                     int pWidth = mParent.getWidth() / 2;
                     int pHeight = mParent.getHeight() / 2;
                     int dx = 0;

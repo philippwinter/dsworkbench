@@ -15,18 +15,14 @@
  */
 package de.tor.tribes.ui.views;
 
-import com.jidesoft.swing.JideTabbedPane;
-import com.jidesoft.swing.TabEditingEvent;
-import com.jidesoft.swing.TabEditingListener;
-import com.jidesoft.swing.TabEditingValidator;
-import com.smardec.mousegestures.MouseGestures;
+import de.tor.tribes.control.GenericEventListener;
 import de.tor.tribes.control.GenericManagerListener;
 import de.tor.tribes.control.ManageableType;
-import de.tor.tribes.io.DataHolder;
 import de.tor.tribes.types.*;
 import de.tor.tribes.types.ext.Ally;
 import de.tor.tribes.types.ext.Tribe;
 import de.tor.tribes.types.ext.Village;
+import de.tor.tribes.ui.components.TabPaneComponent;
 import de.tor.tribes.ui.panels.GenericTestPanel;
 import de.tor.tribes.ui.panels.ReportTableTab;
 import de.tor.tribes.ui.windows.AbstractDSWorkbenchFrame;
@@ -36,22 +32,8 @@ import de.tor.tribes.util.bb.AllyReportStatsFormatter;
 import de.tor.tribes.util.bb.OverallReportStatsFormatter;
 import de.tor.tribes.util.bb.TribeReportStatsFormatter;
 import de.tor.tribes.util.farm.FarmManager;
-import de.tor.tribes.util.generator.ui.ReportGenerator;
 import de.tor.tribes.util.report.ReportManager;
 import de.tor.tribes.util.report.ReportStatBuilder;
-import org.apache.commons.configuration.Configuration;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.Logger;
-import org.jdesktop.swingx.JXButton;
-import org.jdesktop.swingx.JXTaskPane;
-import org.jdesktop.swingx.painter.MattePainter;
-import org.jdesktop.swingx.table.TableColumnExt;
-
-import javax.swing.*;
-import javax.swing.event.ChangeEvent;
-import javax.swing.event.ChangeListener;
-import javax.swing.event.ListSelectionEvent;
-import javax.swing.event.ListSelectionListener;
 import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.*;
@@ -60,6 +42,19 @@ import java.awt.image.BufferedImage;
 import java.text.NumberFormat;
 import java.util.*;
 import java.util.List;
+import javax.swing.*;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.configuration2.Configuration;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jdesktop.swingx.JXButton;
+import org.jdesktop.swingx.JXTaskPane;
+import org.jdesktop.swingx.painter.MattePainter;
+import org.jdesktop.swingx.table.TableColumnExt;
 
 /**
  * @author Torridity
@@ -119,7 +114,7 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
             tab.updateSet();
         }
     }
-    private static Logger logger = Logger.getLogger("ReportView");
+    private static Logger logger = LogManager.getLogger("ReportView");
     private static DSWorkbenchReportFrame SINGLETON = null;
     private FightStats lastStats = null;
     private GenericTestPanel centerPanel = null;
@@ -145,10 +140,6 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
         centerPanel.setChildComponent(jXReportsPanel);
         buildMenu();
         capabilityInfoPanel1.addActionListener(this);
-
-        jReportsTabbedPane.setTabShape(JideTabbedPane.SHAPE_OFFICE2003);
-        jReportsTabbedPane.setTabColorProvider(JideTabbedPane.ONENOTE_COLOR_PROVIDER);
-        jReportsTabbedPane.setBoldActiveTab(true);
         KeyStroke bbCopy = KeyStroke.getKeyStroke(KeyEvent.VK_B, ActionEvent.CTRL_MASK, false);
 
         ActionListener resultListener = new ActionListener() {
@@ -161,58 +152,6 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
 
         capabilityInfoPanel2.addActionListener(resultListener);
         jResultTabbedPane.registerKeyboardAction(resultListener, "BBCopy", bbCopy, JComponent.WHEN_IN_FOCUSED_WINDOW);
-
-        jReportsTabbedPane.setCloseAction(new AbstractAction("closeAction") {
-
-            public void actionPerformed(ActionEvent e) {
-                ReportTableTab tab = (ReportTableTab) e.getSource();
-                if (JOptionPaneHelper.showQuestionConfirmBox(jReportsTabbedPane, "Berichtset '" + tab.getReportSet() + "' und alle darin enthaltenen Berichte wirklich löschen? ", "Löschen", "Nein", "Ja") == JOptionPane.YES_OPTION) {
-                    ReportManager.getSingleton().removeGroup(tab.getReportSet());
-                }
-            }
-        });
-        jReportsTabbedPane.addTabEditingListener(new TabEditingListener() {
-
-            @Override
-            public void editingStarted(TabEditingEvent tee) {
-            }
-
-            @Override
-            public void editingStopped(TabEditingEvent tee) {
-                ReportManager.getSingleton().renameGroup(tee.getOldTitle(), tee.getNewTitle());
-            }
-
-            @Override
-            public void editingCanceled(TabEditingEvent tee) {
-            }
-        });
-        jReportsTabbedPane.setTabEditingValidator(new TabEditingValidator() {
-
-            @Override
-            public boolean alertIfInvalid(int tabIndex, String tabText) {
-                if (tabText.trim().length() == 0) {
-                    JOptionPaneHelper.showWarningBox(jReportsTabbedPane, "'" + tabText + "' ist ein ungültiger Setname", "Fehler");
-                    return false;
-                }
-
-                if (ReportManager.getSingleton().groupExists(tabText)) {
-                    JOptionPaneHelper.showWarningBox(jReportsTabbedPane, "Es existiert bereits ein Berichtset mit dem Namen '" + tabText + "'", "Fehler");
-                    return false;
-                }
-                return true;
-            }
-
-            @Override
-            public boolean isValid(int tabIndex, String tabText) {
-                return tabText.trim().length() != 0 && !ReportManager.getSingleton().groupExists(tabText);
-
-            }
-
-            @Override
-            public boolean shouldStartEdit(int tabIndex, MouseEvent event) {
-                return !(tabIndex == 0 || tabIndex == 1);
-            }
-        });
         jReportsTabbedPane.getModel().addChangeListener(new ChangeListener() {
 
             @Override
@@ -261,6 +200,7 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
         super.toBack();
     }
 
+    @Override
     public void storeCustomProperties(Configuration pConfig) {
         pConfig.setProperty(getPropertyPrefix() + ".menu.visible", centerPanel.isMenuVisible());
         pConfig.setProperty(getPropertyPrefix() + ".alwaysOnTop", jAlwaysOnTopBox.isSelected());
@@ -275,6 +215,7 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
         PropertyHelper.storeTableProperties(tab.getReportTable(), pConfig, getPropertyPrefix());
     }
 
+    @Override
     public void restoreCustomProperties(Configuration pConfig) {
         centerPanel.setMenuVisible(pConfig.getBoolean(getPropertyPrefix() + ".menu.visible", true));
         try {
@@ -293,18 +234,17 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
 
     }
 
+    @Override
     public String getPropertyPrefix() {
         return "report.view";
     }
 
     private void buildMenu() {
-
+        // <editor-fold defaultstate="collapsed" desc="view task pane">
         JXTaskPane viewTaskPane = new JXTaskPane();
         viewTaskPane.setTitle("Anzeigen");
-        JXButton viewReport = new JXButton(new ImageIcon(DSWorkbenchReportFrame.class.getResource("/res/ui/view_report.png")));
-        viewReport.setToolTipText("Die gewählten Berichte öffnen");
-        viewReport.addMouseListener(new MouseAdapter() {
-
+        
+        viewTaskPane.getContentPane().add(factoryButton("/res/ui/view_report.png", "Die gew&auml;hlten Berichte öffnen", new MouseAdapter() {
             @Override
             public void mouseReleased(MouseEvent e) {
                 ReportTableTab tab = getActiveTab();
@@ -312,18 +252,13 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
                     tab.viewReport();
                 }
             }
-        });
-        viewTaskPane.getContentPane().add(viewReport);
-
-
+        }));
+        // </editor-fold>
+        // <editor-fold defaultstate="collapsed" desc="transfer task pane">
         JXTaskPane transferTaskPane = new JXTaskPane();
         transferTaskPane.setTitle("Übertragen");
 
-        JXButton transferTroopInfo = new JXButton(new ImageIcon(DSWorkbenchReportFrame.class.getResource("/res/ui/troop_info_add.png")));
-        transferTroopInfo.setToolTipText("<html>&Uuml;bertr&auml;gt die &uuml;berlebenden Truppen des Verteidigers<br/>"
-                + "aus den gew&auml;hlten Berichten in die Truppen&uuml;bersicht</html>");
-        transferTroopInfo.addMouseListener(new MouseAdapter() {
-
+        transferTaskPane.getContentPane().add(factoryButton("/res/ui/troop_info_add.png", "&Uuml;bertr&auml;gt die &uuml;berlebenden Truppen des Verteidigers", new MouseAdapter() {
             @Override
             public void mouseReleased(MouseEvent e) {
                 ReportTableTab tab = getActiveTab();
@@ -331,13 +266,9 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
                     tab.transferTroopInfos();
                 }
             }
-        });
-        transferTaskPane.getContentPane().add(transferTroopInfo);
+        }));
 
-        JXButton transferVillageList = new JXButton(new ImageIcon(DSWorkbenchReportFrame.class.getResource("/res/ui/report_toAStar.png")));
-        transferVillageList.setToolTipText("Überträgt den gewählten Berichte nach A*Star");
-        transferVillageList.addMouseListener(new MouseAdapter() {
-
+        transferTaskPane.getContentPane().add(factoryButton("/res/ui/report_toAStar.png", "&Uuml;bertr&auml;gt den gew&auml;hlten Berichte nach A*Star", new MouseAdapter() {
             @Override
             public void mouseReleased(MouseEvent e) {
                 ReportTableTab tab = getActiveTab();
@@ -345,15 +276,20 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
                     tab.transferSelection(ReportTableTab.TRANSFER_TYPE.ASTAR);
                 }
             }
-        });
-        transferTaskPane.getContentPane().add(transferVillageList);
-
+        }));
+        // </editor-fold>
+        // <editor-fold defaultstate="collapsed" desc="misc task pane">
         JXTaskPane miscPane = new JXTaskPane();
         miscPane.setTitle("Sonstiges");
-        JXButton createStats = new JXButton(new ImageIcon(DSWorkbenchReportFrame.class.getResource("/res/ui/medal.png")));
-        createStats.setToolTipText("Statistiken zu den gewählten Berichten erstellen");
-        createStats.addMouseListener(new MouseAdapter() {
-
+        
+        miscPane.getContentPane().add(factoryButton("/res/ui/document_new_24x24.png", "Neuen Plan erstellen", new MouseAdapter() {
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                fireCreateAttackPlanEvent(e);
+            }
+        }));
+        
+        miscPane.getContentPane().add(factoryButton("/res/ui/medal.png", "Statistiken zu den gew&auml;hlten Berichten erstellen", new MouseAdapter() {
             @Override
             public void mouseReleased(MouseEvent e) {
                 ReportTableTab tab = getActiveTab();
@@ -369,52 +305,25 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
                     jCreateStatsFrame.setVisible(true);
                 }
             }
-        });
+        }));
 
-        miscPane.getContentPane().add(createStats);
-
-        JXButton cleanupReports = new JXButton(new ImageIcon(DSWorkbenchReportFrame.class.getResource("/res/ui/report_cleanup.png")));
-        cleanupReports.setSize(createStats.getSize());
-        cleanupReports.setMinimumSize(createStats.getMinimumSize());
-        cleanupReports.setMaximumSize(createStats.getMaximumSize());
-        cleanupReports.setPreferredSize(createStats.getPreferredSize());
-        cleanupReports.setToolTipText("Veraltete und doppelte Berichte im gewählten Berichtset löschen");
-        cleanupReports.addMouseListener(new MouseAdapter() {
-
+        miscPane.getContentPane().add(factoryButton("/res/ui/report_cleanup.png", "Veraltete und doppelte Berichte im gewählten Berichtset l&ouml;schen", new MouseAdapter() {
             @Override
             public void mouseReleased(MouseEvent e) {
                 cleanupReports();
             }
-        });
+        }));
 
-        miscPane.getContentPane().add(cleanupReports);
-
-        JXButton showRuleDialog = new JXButton(new ImageIcon(DSWorkbenchReportFrame.class.getResource("/res/ui/index_edit.png")));
-        showRuleDialog.setSize(createStats.getSize());
-        showRuleDialog.setMinimumSize(createStats.getMinimumSize());
-        showRuleDialog.setMaximumSize(createStats.getMaximumSize());
-        showRuleDialog.setPreferredSize(createStats.getPreferredSize());
-        showRuleDialog.setToolTipText("Definierte Regeln bearbeiten oder neu erstellen");
-        showRuleDialog.addMouseListener(new MouseAdapter() {
-
+        miscPane.getContentPane().add(factoryButton("/res/ui/index_edit.png", "Definierte Regeln bearbeiten oder neu erstellen", new MouseAdapter() {
             @Override
             public void mouseReleased(MouseEvent e) {
                 rulesDialog.rebuildRuleList();
                 rulesDialog.setLocationRelativeTo(DSWorkbenchReportFrame.this);
                 rulesDialog.setVisible(true);
             }
-        });
+        }));
 
-        miscPane.getContentPane().add(showRuleDialog);
-
-        JXButton applyRules = new JXButton(new ImageIcon(DSWorkbenchReportFrame.class.getResource("/res/ui/index_refresh.png")));
-        applyRules.setSize(createStats.getSize());
-        applyRules.setMinimumSize(createStats.getMinimumSize());
-        applyRules.setMaximumSize(createStats.getMaximumSize());
-        applyRules.setPreferredSize(createStats.getPreferredSize());
-        applyRules.setToolTipText("Definierte Regeln jetzt auf das gewählte Berichtset anwenden");
-        applyRules.addMouseListener(new MouseAdapter() {
-
+        miscPane.getContentPane().add(factoryButton("/res/ui/index_refresh.png", "Definierte Regeln jetzt auf das gew&auml;hlte Berichtset anwenden", new MouseAdapter() {
             @Override
             public void mouseReleased(MouseEvent e) {
                 ReportTableTab tab = getActiveTab();
@@ -426,9 +335,8 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
                     }
                 }
             }
-        });
-
-        miscPane.getContentPane().add(applyRules);
+        }));
+        // </editor-fold>
 
         centerPanel.setupTaskPane(viewTaskPane, transferTaskPane, miscPane);
     }
@@ -511,22 +419,59 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
             tab.deregister();
             jReportsTabbedPane.removeTabAt(0);
         }
-
-        LabelUIResource lr = new LabelUIResource();
-        lr.setLayout(new BorderLayout());
-        lr.add(jNewPlanPanel, BorderLayout.CENTER);
-        jReportsTabbedPane.setTabLeadingComponent(lr);
+        
         String[] plans = ReportManager.getSingleton().getGroups();
 
         //insert default tab to first place
-        int cnt = 0;
         for (String plan : plans) {
             ReportTableTab tab = new ReportTableTab(plan, this);
             jReportsTabbedPane.addTab(plan, tab);
-            cnt++;
         }
-        jReportsTabbedPane.setTabClosableAt(0, false);
-        jReportsTabbedPane.setTabClosableAt(1, false);
+        
+        for(int i = 0; i < jReportsTabbedPane.getTabCount(); i++) {
+            final TabPaneComponent component = new TabPaneComponent(jReportsTabbedPane);
+            component.setStopEditingListener(new GenericEventListener() {
+                @Override
+                public void event() {
+                    int i = jReportsTabbedPane.indexOfTabComponent(component);
+                    ReportTableTab tab = (ReportTableTab) jReportsTabbedPane.getComponentAt(i);
+                    String newName = component.getEditedText();
+                    if(!newName.equals(tab.getReportSet())) {
+                        newName = newName.trim();
+                        if (newName.length() == 0) {
+                            JOptionPaneHelper.showWarningBox(jReportsTabbedPane, "'" + newName + "' ist ein ungültiger Setname", "Fehler");
+                            return;
+                        }
+                        if (ReportManager.getSingleton().groupExists(newName)) {
+                            JOptionPaneHelper.showWarningBox(jReportsTabbedPane, "Es existiert bereits ein Berichtset mit dem Namen '" + newName + "'", "Fehler");
+                            return;
+                        }
+                        
+                        ReportManager.getSingleton().renameGroup(tab.getReportSet(), newName);
+                    }
+                }
+            });
+            
+            component.setCloseTabListener(new GenericEventListener() {
+                @Override
+                public void event() {
+                    int i = jReportsTabbedPane.indexOfTabComponent(component);
+                    ReportTableTab tab = (ReportTableTab) jReportsTabbedPane.getComponentAt(i);
+                    if (JOptionPaneHelper.showQuestionConfirmBox(jReportsTabbedPane, "Befehlsplan '" + tab.getReportSet() +
+                            "' und alle darin enthaltenen Berichte wirklich löschen? ", "Löschen", "Nein", "Ja") == JOptionPane.YES_OPTION) {
+                        ReportManager.getSingleton().removeGroup(tab.getReportSet());
+                    }
+                }
+            });
+            
+            if(i == 0 || i == 1) {
+                component.setCloseable(false);
+                component.setEditable(false);
+            }
+            
+            jReportsTabbedPane.setTabComponentAt(i, component);
+        }
+        
         jReportsTabbedPane.revalidate();
         ReportTableTab tab = getActiveTab();
         if (tab != null) {
@@ -579,7 +524,7 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
         jTribeStatsArea = new javax.swing.JTextPane();
         capabilityInfoPanel2 = new de.tor.tribes.ui.components.CapabilityInfoPanel();
         jXReportsPanel = new org.jdesktop.swingx.JXPanel();
-        jReportsTabbedPane = new com.jidesoft.swing.JideTabbedPane();
+        jReportsTabbedPane = new javax.swing.JTabbedPane();
         jNewPlanPanel = new javax.swing.JPanel();
         jLabel10 = new javax.swing.JLabel();
         jxSearchPane = new org.jdesktop.swingx.JXPanel();
@@ -635,7 +580,7 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
         jPanel4.setOpaque(false);
         jPanel4.setLayout(new java.awt.BorderLayout());
 
-        jOverallStatsArea.setContentType("text/html");
+        jOverallStatsArea.setContentType("text/html"); // NOI18N
         jOverallStatsArea.setEditable(false);
         jScrollPane1.setViewportView(jOverallStatsArea);
 
@@ -646,7 +591,7 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
         jPanel5.setBackground(new java.awt.Color(239, 235, 223));
         jPanel5.setLayout(new java.awt.BorderLayout());
 
-        jAllyStatsArea.setContentType("text/html");
+        jAllyStatsArea.setContentType("text/html"); // NOI18N
         jAllyStatsArea.setEditable(false);
         jScrollPane5.setViewportView(jAllyStatsArea);
 
@@ -657,7 +602,7 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
         jPanel6.setBackground(new java.awt.Color(239, 235, 223));
         jPanel6.setLayout(new java.awt.BorderLayout());
 
-        jTribeStatsArea.setContentType("text/html");
+        jTribeStatsArea.setContentType("text/html"); // NOI18N
         jTribeStatsArea.setEditable(false);
         jScrollPane6.setViewportView(jTribeStatsArea);
 
@@ -747,11 +692,6 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
         );
 
         jXReportsPanel.setLayout(new java.awt.BorderLayout());
-
-        jReportsTabbedPane.setShowCloseButton(true);
-        jReportsTabbedPane.setShowCloseButtonOnTab(true);
-        jReportsTabbedPane.setShowGripper(true);
-        jReportsTabbedPane.setTabEditingAllowed(true);
         jXReportsPanel.add(jReportsTabbedPane, java.awt.BorderLayout.CENTER);
 
         jNewPlanPanel.setOpaque(false);
@@ -872,7 +812,6 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
 
         jGuessUnknownLosses.setSelected(true);
         jGuessUnknownLosses.setText("Gegnerische Verluste schätzen, falls unbekannt");
-        jGuessUnknownLosses.setOpaque(false);
         jGuessUnknownLosses.addItemListener(new java.awt.event.ItemListener() {
             public void itemStateChanged(java.awt.event.ItemEvent evt) {
                 fireStatOptionsChangedEvent(evt);
@@ -881,7 +820,6 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
 
         jUseSilentKillsBox.setSelected(true);
         jUseSilentKillsBox.setText("Auswärtige Einheiten bei Adelung als Verlust werten");
-        jUseSilentKillsBox.setOpaque(false);
         jUseSilentKillsBox.addItemListener(new java.awt.event.ItemListener() {
             public void itemStateChanged(java.awt.event.ItemEvent evt) {
                 fireStatOptionsChangedEvent(evt);
@@ -890,7 +828,6 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
 
         jCheckBox3.setSelected(true);
         jCheckBox3.setText("Verluste pro Angreifer/Verteidiger anzeigen");
-        jCheckBox3.setOpaque(false);
         jCheckBox3.addItemListener(new java.awt.event.ItemListener() {
             public void itemStateChanged(java.awt.event.ItemEvent evt) {
                 fireStatOptionsChangedEvent(evt);
@@ -898,7 +835,6 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
         });
 
         jShowPercentsBox.setText("Prozentuale Anteile anzeigen");
-        jShowPercentsBox.setOpaque(false);
         jShowPercentsBox.addItemListener(new java.awt.event.ItemListener() {
             public void itemStateChanged(java.awt.event.ItemEvent evt) {
                 fireStatOptionsChangedEvent(evt);
@@ -935,7 +871,6 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
         getContentPane().setLayout(new java.awt.GridBagLayout());
 
         jAlwaysOnTopBox.setText("Immer im Vordergrund");
-        jAlwaysOnTopBox.setOpaque(false);
         jAlwaysOnTopBox.addChangeListener(new javax.swing.event.ChangeListener() {
             public void stateChanged(javax.swing.event.ChangeEvent evt) {
                 fireAlwaysOnTopEvent(evt);
@@ -1057,7 +992,7 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
 
         StringBuilder allyBuffer = new StringBuilder();
         StringBuilder tribeBuffer = new StringBuilder();
-        Hashtable<Ally, AllyStatResult> allyResults = new Hashtable<>();
+        HashMap<Ally, AllyStatResult> allyResults = new HashMap<>();
         OverallStatResult overallResult = new OverallStatResult();
         for (Object o : selection) {
             Ally a = (Ally) o;
@@ -1078,9 +1013,7 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
         overallResult.setDefenders(overallDefTribes);
         overallResult.setDefenderAllies(overallDefAllies);
 
-        Enumeration<Ally> keys = allyResults.keys();
-        while (keys.hasMoreElements()) {
-            Ally a = keys.nextElement();
+        for(Ally a: allyResults.keySet()) {
             AllyStatResult res = allyResults.get(a);
             res.setAlly(a);
             res.setOverallKills(overallResult.getKills());
@@ -1105,11 +1038,7 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
         }
         try {
             List<AllyStatResult> list = new LinkedList<>();
-            Enumeration<Ally> allyKeys = allyResults.keys();
-            while (allyKeys.hasMoreElements()) {
-                Ally a = allyKeys.nextElement();
-                list.add(allyResults.get(a));
-            }
+            CollectionUtils.addAll(list, allyResults.values());
             allyResultCodes = new AllyReportStatsFormatter().formatElements(list, true);
             jAllyStatsArea.setText("<html><head>" + BBCodeFormatter.getStyles() + "</head><body>" + BBCodeFormatter.toHtml(allyResultCodes) + "</body></html>");
         } catch (Exception e) {
@@ -1120,9 +1049,7 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
 
         try {
             List<TribeStatResult> list = new LinkedList<>();
-            Enumeration<Ally> allyKeys = allyResults.keys();
-            while (allyKeys.hasMoreElements()) {
-                AllyStatResult allyStat = allyResults.get(allyKeys.nextElement());
+            for(AllyStatResult allyStat: allyResults.values()) {
                 Collections.addAll(list, allyStat.getTribeStats().toArray(new TribeStatResult[allyStat.getTribeStats().size()]));
             }
             tribeResultCodes = new TribeReportStatsFormatter().formatElements(list, true);
@@ -1183,6 +1110,18 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
     public void fireVillagesDraggedEvent(List<Village> pVillages, Point pDropLocation) {
     }
 
+    /**
+     * Factory a new button
+     */
+    private JXButton factoryButton(String pIconResource, String pTooltip, MouseListener pListener) {
+        JXButton button = new JXButton(new ImageIcon(DSWorkbenchAttackFrame.class.getResource(pIconResource)));
+        if (pTooltip != null) {
+            button.setToolTipText("<html><div width='150px'>" + pTooltip + "</div></html>");
+        }
+        button.addMouseListener(pListener);
+        return button;
+    }
+
     // <editor-fold defaultstate="collapsed" desc="Gesture Handling">
     @Override
     public void fireExportAsBBGestureEvent() {
@@ -1220,40 +1159,11 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
     public void fireRenameGestureEvent() {
         int idx = jReportsTabbedPane.getSelectedIndex();
         if (idx != 0 && idx != 1) {
-            jReportsTabbedPane.editTabAt(idx);
+            jReportsTabbedPane.setSelectedIndex(idx);
         }
     }
-// </editor-fold>
-
-    public static void main(String[] args) {
-        Logger.getRootLogger().addAppender(new ConsoleAppender(new org.apache.log4j.PatternLayout("%d - %-5p - %-20c (%C [%L]) - %m%n")));
-        MouseGestures mMouseGestures = new MouseGestures();
-        mMouseGestures.setMouseButton(MouseEvent.BUTTON3_MASK);
-        mMouseGestures.addMouseGesturesListener(new MouseGestureHandler());
-        mMouseGestures.start();
-        GlobalOptions.setSelectedServer("de43");
-        DataHolder.getSingleton().loadData(false);
-        ProfileManager.getSingleton().loadProfiles();
-        GlobalOptions.setSelectedProfile(ProfileManager.getSingleton().getProfiles("de43")[0]);
-        GlobalOptions.loadUserData();
-        try {
-            //  UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            UIManager.setLookAndFeel("com.sun.java.swing.plaf.nimbus.NimbusLookAndFeel");
-        } catch (Exception ignored) {
-        }
-
-
-        ReportGenerator rgen = new ReportGenerator();
-
-        rgen.setVisible(true);
-
-        DSWorkbenchReportFrame.getSingleton().setSize(800, 600);
-        DSWorkbenchReportFrame.getSingleton().resetView();
-        DSWorkbenchReportFrame.getSingleton().setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-
-        DSWorkbenchReportFrame.getSingleton().setVisible(true);
-
-    }
+    // </editor-fold>
+    
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private de.tor.tribes.ui.components.CapabilityInfoPanel capabilityInfoPanel1;
     private de.tor.tribes.ui.components.CapabilityInfoPanel capabilityInfoPanel2;
@@ -1282,7 +1192,7 @@ public class DSWorkbenchReportFrame extends AbstractDSWorkbenchFrame implements 
     private javax.swing.JPanel jPanel7;
     private javax.swing.JList jReportSetsForStatsList;
     private javax.swing.JPanel jReportsPanel;
-    private com.jidesoft.swing.JideTabbedPane jReportsTabbedPane;
+    private javax.swing.JTabbedPane jReportsTabbedPane;
     private javax.swing.JTabbedPane jResultTabbedPane;
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JScrollPane jScrollPane2;

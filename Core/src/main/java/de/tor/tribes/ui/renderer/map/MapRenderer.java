@@ -17,7 +17,6 @@ package de.tor.tribes.ui.renderer.map;
 
 import de.tor.tribes.io.DataHolder;
 import de.tor.tribes.io.UnitHolder;
-import de.tor.tribes.types.Church;
 import de.tor.tribes.types.drawing.AbstractForm;
 import de.tor.tribes.types.ext.*;
 import de.tor.tribes.ui.ImageManager;
@@ -28,9 +27,7 @@ import de.tor.tribes.util.Constants;
 import de.tor.tribes.util.GlobalOptions;
 import de.tor.tribes.util.ImageUtils;
 import de.tor.tribes.util.ServerSettings;
-import org.apache.log4j.Logger;
-
-import javax.swing.*;
+import de.tor.tribes.util.village.KnownVillage;
 import java.awt.*;
 import java.awt.geom.*;
 import java.awt.image.BufferedImage;
@@ -39,6 +36,10 @@ import java.awt.image.Raster;
 import java.awt.image.WritableRaster;
 import java.util.*;
 import java.util.List;
+import javax.swing.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * Map Renderer which supports "dirty layers" defining which layer has to be
@@ -53,10 +54,11 @@ import java.util.List;
  * assignable
  *
  * @author Charon
+ * @author extremeCrazyCoder
  */
 public class MapRenderer {
 
-    private static Logger logger = Logger.getLogger("MapRenderer");
+    private static Logger logger = LogManager.getLogger("MapRenderer");
     public static final int ALL_LAYERS = 0;
     public static final int MAP_LAYER = 1;
     public static final int MARKER_LAYER = 2;
@@ -66,6 +68,7 @@ public class MapRenderer {
     public static final int LIVE_LAYER = 6;
     public static final int NOTE_LAYER = 7;
     public static final int TROOP_LAYER = 8;
+    public static final int WATCHTOWER_LAYER = 9;
     private boolean bMapRedrawRequired = true;
     private Village[][] mVisibleVillages = null;
     private HashMap<Village, Rectangle> mVillagePositions = null;
@@ -84,18 +87,19 @@ public class MapRenderer {
     private Popup mInfoPopup = null;
     private Village mPopupVillage = null;
     private BufferedImage mBackBuffer = null;
-    private Hashtable<Ally, Integer> mAllyCount = new Hashtable<>();
-    private Hashtable<Tribe, Integer> mTribeCount = new Hashtable<>();
-    private Hashtable<Village, AnimatedVillageInfoRenderer> mAnimators = new Hashtable<>();
+    private HashMap<Ally, Integer> mAllyCount = new HashMap<>();
+    private HashMap<Tribe, Integer> mTribeCount = new HashMap<>();
+    private HashMap<Village, AnimatedVillageInfoRenderer> mAnimators = new HashMap<>();
     //rendering layers
-    private MapLayerRenderer mMapLayer = new MapLayerRenderer();
-    private TroopDensityLayerRenderer mTroopDensityLayer = new TroopDensityLayerRenderer();
-    private ChurchLayerRenderer mChurchLayer = new ChurchLayerRenderer();
-    private FormLayerRenderer mFormsLayer = new FormLayerRenderer();
-    private TagMarkerLayerRenderer mTagLayer = new TagMarkerLayerRenderer();
-    private AttackLayerRenderer mAttackLayer = new AttackLayerRenderer();
-    private SupportLayerRenderer mSupportLayer = new SupportLayerRenderer();
-    private NoteLayerRenderer mNoteLayer = new NoteLayerRenderer();
+    private final MapLayerRenderer mMapLayer = new MapLayerRenderer();
+    private final TroopDensityLayerRenderer mTroopDensityLayer = new TroopDensityLayerRenderer();
+    private final ChurchLayerRenderer mChurchLayer = new ChurchLayerRenderer();
+    private final FormLayerRenderer mFormsLayer = new FormLayerRenderer();
+    private final TagMarkerLayerRenderer mTagLayer = new TagMarkerLayerRenderer();
+    private final AttackLayerRenderer mAttackLayer = new AttackLayerRenderer();
+    private final SupportLayerRenderer mSupportLayer = new SupportLayerRenderer();
+    private final NoteLayerRenderer mNoteLayer = new NoteLayerRenderer();
+    private final WatchtowerLayerRenderer mWatchtowerLayer = new WatchtowerLayerRenderer();
     /**
      * RenderSettings used within the last rendering cycle
      */
@@ -109,9 +113,7 @@ public class MapRenderer {
             layerVector.add("");
         }
 
-        Enumeration<String> values = Constants.LAYERS.keys();
-        while (values.hasMoreElements()) {
-            String layer = values.nextElement();
+        for(String layer: Constants.LAYERS.keySet()) {
             layerVector.set(Constants.LAYERS.get(layer), layer);
         }
 
@@ -261,49 +263,72 @@ public class MapRenderer {
                     }
 
                     //check for all other layers
-                    if (layer == 2) {
-                        try {
-                            mTagLayer.performRendering(mRenderSettings, g2d);
-                        } catch (Exception e) {
-                            logger.warn("Failed to render group layer");
-                        }
-                    } else if (layer == 3) {
-                        //render troop density
-                        try {
-                            mTroopDensityLayer.performRendering(mRenderSettings, g2d);
-                        } catch (Exception e) {
-                            logger.warn("Failed to render troop density layer");
-                        }
-                    } else if (layer == 4) {
-                        try {
-                            mNoteLayer.performRendering(mRenderSettings, g2d);
-                        } catch (Exception e) {
-                            logger.warn("Failed to render note layer", e);
-                        }
-                    } else if (layer == 5) {
-                        try {
-                            mAttackLayer.performRendering(mRenderSettings, g2d);
-                        } catch (Exception e) {
-                            logger.warn("Failed to render attack layer");
-                        }
-                    } else if (layer == 6) {
-                        try {
-                            mSupportLayer.performRendering(mRenderSettings, g2d);
-                        } catch (Exception e) {
-                            logger.warn("Failed to render support layer");
-                        }
-                    } else if (layer == 7) {
-                        try {
-                            mFormsLayer.performRendering(mRenderSettings, g2d);
-                        } catch (Exception e) {
-                            logger.warn("Failed to render forms layer");
-                        }
-                    } else if (layer == 8) {
-                        try {
-                            mChurchLayer.performRendering(mRenderSettings, g2d);
-                        } catch (Exception e) {
-                            logger.warn("Failed to render church layer");
-                        }
+                    switch (layer) {
+                        case 2:
+                            try {
+                                mTagLayer.performRendering(mRenderSettings, g2d);
+                            } catch (Exception e) {
+                                logger.warn("Failed to render group layer", e);
+                            }
+                            break;
+                        case 3:
+                            //render troop density
+                            try {
+                                mTroopDensityLayer.performRendering(mRenderSettings, g2d);
+                            } catch (Exception e) {
+                                logger.warn("Failed to render troop density layer", e);
+                            }
+                            break;
+                        case 4:
+                            try {
+                                mNoteLayer.performRendering(mRenderSettings, g2d);
+                            } catch (Exception e) {
+                                logger.warn("Failed to render note layer", e);
+                            }
+                            break;
+                        case 5:
+                            try {
+                                mAttackLayer.performRendering(mRenderSettings, g2d);
+                            } catch (Exception e) {
+                                logger.warn("Failed to render attack layer", e);
+                            }
+                            break;
+                        case 6:
+                            try {
+                                mSupportLayer.performRendering(mRenderSettings, g2d);
+                            } catch (Exception e) {
+                                logger.warn("Failed to render support layer", e);
+                            }
+                            break;
+                        case 7:
+                            try {
+                                mFormsLayer.performRendering(mRenderSettings, g2d);
+                            } catch (Exception e) {
+                                logger.warn("Failed to render forms layer", e);
+                            }
+                            break;
+                        case 8:
+                            try {
+                                if (ServerSettings.getSingleton().isChurch()
+                                        && GlobalOptions.getProperties().getBoolean("show.church")) {
+                                    mChurchLayer.performRendering(mRenderSettings, g2d);
+                                }
+                            } catch (Exception e) {
+                                logger.warn("Failed to render church layer", e);
+                            }
+                            break;
+                        case 9:
+                            try {
+                                if (ServerSettings.getSingleton().isWatchtower()
+                                        && GlobalOptions.getProperties().getBoolean("show.watchtower")) {
+                                    mWatchtowerLayer.performRendering(mRenderSettings, g2d);
+                                }
+                            } catch (Exception e) {
+                                logger.warn("Failed to render church layer", e);
+                            }
+                            break;
+                        default:
+                            break;
                     }
                 }
 
@@ -312,7 +337,7 @@ public class MapRenderer {
                     //new FarmLayerRenderer(mVillagePositions).performRendering(mRenderSettings, g2d);
                     renderLiveLayer(g2d);
                 } catch (Exception e) {
-                    logger.warn("Failed to render live layer");
+                    logger.warn("Failed to render live layer", e);
                 }
                 //render selection
                 de.tor.tribes.types.drawing.Rectangle selection = MapPanel.getSingleton().getSelectionRect();
@@ -401,11 +426,10 @@ public class MapRenderer {
 
         int x = 0;
         int y = 0;
-        int mapW = ServerSettings.getSingleton().getMapDimension().width;
-        int mapH = ServerSettings.getSingleton().getMapDimension().height;
+        Rectangle mapDim = ServerSettings.getSingleton().getMapDimension();
         for (int i = xStartVillage; i <= xEndVillage; i++) {
             for (int j = yStartVillage; j <= yEndVillage; j++) {
-                if ((i < 0) || (i > mapW - 1) || (j < 0) || (j > mapH - 1)) {
+                if ((i < mapDim.getMinX()) || (i > mapDim.getMaxX()) || (j < mapDim.getMinY()) || (j > mapDim.getMaxY())) {
                     //handle villages outside map
                     mVisibleVillages[x][y] = null;
                 } else {
@@ -444,12 +468,12 @@ public class MapRenderer {
         return dCurrentZoom;
     }
 
-    public Hashtable<Tribe, Integer> getTribeCount() {
-        return (Hashtable<Tribe, Integer>) mTribeCount.clone();
+    public HashMap<Tribe, Integer> getTribeCount() {
+        return (HashMap<Tribe, Integer>) mTribeCount.clone();
     }
 
-    public Hashtable<Ally, Integer> getAllyCount() {
-        return (Hashtable<Ally, Integer>) mAllyCount.clone();
+    public HashMap<Ally, Integer> getAllyCount() {
+        return (HashMap<Ally, Integer>) mAllyCount.clone();
     }
 
     /**
@@ -512,8 +536,7 @@ public class MapRenderer {
         boolean mouseDown = MapPanel.getSingleton().isMouseDown();
 
         // <editor-fold defaultstate="collapsed" desc="Mark current players villages">
-
-        if (!mouseDown && GlobalOptions.getProperties().getBoolean("highlight.tribes.villages", false)) {
+        if (!mouseDown && GlobalOptions.getProperties().getBoolean("highlight.tribes.villages")) {
             Tribe mouseTribe = Barbarians.getSingleton();
             if (mouseVillage != null) {
                 mouseTribe = mouseVillage.getTribe();
@@ -568,7 +591,7 @@ public class MapRenderer {
                 int cnt = 0;
                 for (UnitHolder u : DataHolder.getSingleton().getUnits()) {
                     de.tor.tribes.types.drawing.Circle c = new de.tor.tribes.types.drawing.Circle();
-                    int r = GlobalOptions.getProperties().getInt("radar.size", 1);
+                    int r = GlobalOptions.getProperties().getInt("radar.size");
                     double diam = 2 * (double) r / u.getSpeed();
                     double xp = v.getX() + 0.5 - diam / 2;
                     double yp = v.getY() + 0.5 - diam / 2;
@@ -583,7 +606,7 @@ public class MapRenderer {
                     c.setStrokeWidth(3f);
                     c.setXPosEnd(xp + diam);
                     c.setYPosEnd(yp + diam);
-                    Color co = Color.decode(GlobalOptions.getProperties().getString(u.getName() + ".color", "#FF0000"));
+                    Color co = Color.decode(GlobalOptions.getProperties().getString(u.getName() + ".color"));
                     c.setDrawColor(co);
                     c.setDrawAlpha(0.8f);
                     c.renderForm(g2d);
@@ -599,38 +622,41 @@ public class MapRenderer {
         }
         // </editor-fold>
 
-        // <editor-fold defaultstate="collapsed" desc="Draw live church">
-        Church tmpChurch = new Church();
+        // <editor-fold defaultstate="collapsed" desc="Draw live church / Watchtower">
         if (mouseVillage != null && mVillagePositions != null) {
-            tmpChurch.setVillage(mouseVillage);
-            if (cursor == ImageManager.CURSOR_CHURCH_1) {
-                tmpChurch.setRange(2);
-            } else if (cursor == ImageManager.CURSOR_CHURCH_2) {
-                tmpChurch.setRange(6);
-            } else if (cursor == ImageManager.CURSOR_CHURCH_3) {
-                tmpChurch.setRange(8);
-            } else {
-                tmpChurch = null;
+            KnownVillage tmpVillage = new KnownVillage(mouseVillage);
+            switch (cursor) {
+                case ImageManager.CURSOR_CHURCH_1:
+                    tmpVillage.setChurchLevel(1);
+                    break;
+                case ImageManager.CURSOR_CHURCH_2:
+                    tmpVillage.setChurchLevel(2);
+                    break;
+                case ImageManager.CURSOR_CHURCH_3:
+                    tmpVillage.setChurchLevel(3);
+                    break;
+                case ImageManager.CURSOR_WATCHTOWER_1:
+                    tmpVillage.setWatchtowerLevel(1);
+                    break;
+                case ImageManager.CURSOR_WATCHTOWER_INPUT:
+                    tmpVillage.setWatchtowerLevel(10);
+                    break;
             }
-            if (tmpChurch != null) {
+            if (tmpVillage.hasChurch()) {
                 Rectangle r = mVillagePositions.get(mouseVillage);
-                if (r != null) {
-                    Composite cb = g2d.getComposite();
-                    Color cob = g2d.getColor();
-                    g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, .3f));
-                    GeneralPath p = ChurchLayerRenderer.calculateChurchPath(tmpChurch, mouseVillage, r.width, r.height);
-                    g2d.setColor(Constants.DS_BACK_LIGHT);
-                    g2d.fill(p);
-                    g2d.setComposite(cb);
-                    g2d.setColor(Constants.DS_BACK);
-                    g2d.draw(p);
-                    g2d.setColor(cob);
+                if (r != null && ServerSettings.getSingleton().isChurch()) {
+                    mChurchLayer.renderTempChurch(g2d, tmpVillage, r);
+                }
+            }
+
+            if (tmpVillage.hasWatchtower()) {
+                Rectangle r = mVillagePositions.get(mouseVillage);
+                if (r != null && ServerSettings.getSingleton().isWatchtower()) {
+                    mWatchtowerLayer.renderTempWatchtower(g2d, tmpVillage, r);
                 }
             }
         }
-
         // </editor-fold>
-
 
         //draw additional info
         if (!mouseDown && mouseVillage != null && Boolean.parseBoolean(GlobalOptions.getProperty("show.mouseover.info"))) {
@@ -643,9 +669,7 @@ public class MapRenderer {
             animator.update(mouseVillage, rect, g2d);
         }
 
-        Enumeration<Village> iterator = mAnimators.keys();
-        while (iterator.hasMoreElements()) {
-            Village next = iterator.nextElement();
+        for(Village next: mAnimators.keySet()) {
             AnimatedVillageInfoRenderer animator = mAnimators.get(next);
             if (animator.isFinished()) {
                 mAnimators.remove(next);
@@ -668,7 +692,7 @@ public class MapRenderer {
             }
             g2d.setColor(cBefore);
         }
-        if (GlobalOptions.getProperties().getBoolean("show.ruler", true)) {
+        if (GlobalOptions.getProperties().getBoolean("show.ruler")) {
             //ruler drawing
             HashMap<Color, Rectangle> vertRulerParts = new HashMap<>();
             HashMap<Color, Rectangle> horRulerParts = new HashMap<>();
@@ -801,11 +825,16 @@ public class MapRenderer {
             g2d.setColor(c);
         }
 
+        //Possible workaround for missing support of setting cursors, e.g. under MacOS
+        //Todo: Update cursor image (remove arrows and just keep the icon), check placement of icon relative to cursor position
+        //Point mp = MapPanel.getSingleton().getMousePosition();
+        //g2d.drawImage(ImageManager.getCursorImage(MapPanel.getSingleton().getCurrentCursor()).getImage(), mp.x+16, mp.y+16, null);
+        
         if (!MapPanel.getSingleton().isMouseDown()
                 && Boolean.parseBoolean(GlobalOptions.getProperty("show.map.popup"))
                 && !DSWorkbenchMainFrame.getSingleton().isGlasspaneVisible()) {
             try {
-                if (DSWorkbenchMainFrame.getSingleton().isActive() && MapPanel.getSingleton().getMousePosition() != null) {
+                if (DSWorkbenchMainFrame.getSingleton().isActive() && MapPanel.getSingleton().getMousePosition() != null && !MapPanel.getSingleton().isActionMenuShowing()) {
                     if (mouseVillage == null) {
                         if (mInfoPopup != null) {
                             mInfoPopup.hide();
@@ -928,7 +957,7 @@ class RoundGradientContext implements PaintContext {
                 }
 
                 int base = (j * w + i) * 4;
-                data[base]     = (int) (color1.getRed() + ratio * (color2.getRed() - color1.getRed()));
+                data[base] = (int) (color1.getRed() + ratio * (color2.getRed() - color1.getRed()));
                 data[base + 1] = (int) (color1.getGreen() + ratio * (color2.getGreen() - color1.getGreen()));
                 data[base + 2] = (int) (color1.getBlue() + ratio * (color2.getBlue() - color1.getBlue()));
                 data[base + 3] = (int) (color1.getAlpha() + ratio * (color2.getAlpha() - color1.getAlpha()));

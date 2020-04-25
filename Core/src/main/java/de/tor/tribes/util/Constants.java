@@ -17,15 +17,14 @@ package de.tor.tribes.util;
 
 import java.awt.Color;
 import java.text.SimpleDateFormat;
-import java.util.Hashtable;
+import java.util.HashMap;
 
 /**
  *
  * @author Torridity
  */
 public class Constants {
-
-    public final static double VERSION = 3.45;
+    public final static double VERSION = 3.73;
     public final static String VERSION_ADDITION = "";
     public final static Color DS_BACK = new Color(225, 213, 190);
     public final static Color DS_BACK_LIGHT = new Color(239, 235, 223);
@@ -37,12 +36,11 @@ public class Constants {
     public final static Color NAP_MARKER = new Color(127, 0, 127);
     public final static Color ALLY_MARKER = new Color(0, 160, 244);
     public final static String SERVER_DIR = "./servers";
-    public static Hashtable<String, Integer> LAYERS = null;
-    public final static int LAYER_COUNT = 9;
+    public final static HashMap<String, Integer> LAYERS = new HashMap<>();
+    public final static int LAYER_COUNT = 10;
     public final static boolean DEBUG = false;
-
+    
     static {
-        LAYERS = new Hashtable<>();
         LAYERS.put("Markierungen", 0);
         LAYERS.put("Dörfer", 1);
         LAYERS.put("Dorfsymbole", 2);
@@ -52,6 +50,7 @@ public class Constants {
         LAYERS.put("Unterstützungen", 6);
         LAYERS.put("Zeichnungen", 7);
         LAYERS.put("Kirchenradien", 8);
+        LAYERS.put("Wachturmradien", 9);
         if (DEBUG) {
             System.err.println("DEBUG MODE ENABLED!");
         }
